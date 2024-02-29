@@ -23,14 +23,14 @@ struct RichRope{S<:AbstractString} <: AbstractRope
     leaf::S         # A non-leaf node sets this to ""
     left::Union{RichRope,Nothing}   # Left child (nothing for leaf)
     right::Union{RichRope,Nothing}  # Right child (nothing for leaf)
-    function RichRope(sizeof::Int,
+    function RichRope{S}(sizeof::Int,
                       depth::Int,
                       length::Int,
                       grapheme::Int,
                       linenum::Int,
                       leaf::S,
-                      left::RichRope,
-                      right::RichRope) where {S}
+                      left::RichRope{S},
+                      right::RichRope{S}) where {S<:AbstractString}
         new{S}(sizeof, depth, length, grapheme, linenum, leaf, left, right)
     end
     function RichRope(sizeof::Int,
@@ -38,7 +38,7 @@ struct RichRope{S<:AbstractString} <: AbstractRope
                       length::Int,
                       grapheme::Int,
                       linenum::Int,
-                      leaf::S) where {S}
+                      leaf::S) where {S<:AbstractString}
         new{S}(sizeof, depth, length, grapheme, linenum, leaf, nothing,nothing)
     end
 end
@@ -54,7 +54,7 @@ end
 function readinrope(io::IO)
     reading = true
     remain::Vector{UInt8} = UInt8[]
-    leaves = RichRope[]
+    leaves = RichRope{String}[]
     while reading
         v1 = read(io, LEAF_SIZE)
         if length(v1) < LEAF_SIZE
@@ -70,7 +70,7 @@ function readinrope(io::IO)
             s_tmp = s[1:end-rem]
             remain = codeunits(s[end-rem+1:end])
             s = s_tmp
-        else
+        elseif !isempty(s)
             g += 1
             len += 1
             if s[end] == '\n'
@@ -86,7 +86,7 @@ function readinrope(io::IO)
     return mergeleaves(leaves)
 end
 
-function mergeleaves(leaves::Vector{RichRope})
+function mergeleaves(leaves::Vector{RichRope{S}}) where {S<:AbstractString}
     println()
     tier = RichRope[]
     # to get one-based line indexing, we handle the first two special-case.
@@ -95,7 +95,7 @@ function mergeleaves(leaves::Vector{RichRope})
     len = left.length + right.length
     g = left.grapheme + right.grapheme
     nl = left.linenum + right.linenum + 1
-    push!(tier, RichRope(size, 1, len, g, nl, "", left, right))
+    push!(tier, RichRope{S}(size, 1, len, g, nl, "", left, right))
     leaves = leaves[3:end]
     crunching = true
     while crunching
@@ -104,11 +104,10 @@ function mergeleaves(leaves::Vector{RichRope})
             if i < length(leaves)
                 left, right = leaves[i], leaves[i+1]
                 push!(tier, concatenate(left, right))
+            else
+                push!(tier, leaves[end])
             end
         end
-        if isodd(length(leaves))
-            push!(tier, leaves[end])
-        end  # TODO does this do weird things to the semantics of depth?
         if length(tier) == 1
             crunching = false
         else
@@ -119,16 +118,69 @@ function mergeleaves(leaves::Vector{RichRope})
     return only(tier)
 end
 
-function concatenate(left::RichRope, right::RichRope)
+function concatenate(left::RichRope{S}, right::RichRope{S}) where {S<:AbstractString}
     size = left.sizeof + right.sizeof
     len = left.length + right.length
     g = left.grapheme + right.grapheme
     nl = left.linenum + right.linenum
     depth = max(left.depth, right.depth) + 1
-    RichRope(size, depth, len, g, nl, "", left, right)
+    RichRope{S}(size, depth, len, g, nl, one(S), left, right)
 end
 
+isleaf(a::RichRope) = a.leaf !== ""
+
+Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
+Base.:*(a::RichRope, b::AbstractString) = concatenate(a, RichRope(b))
+Base.:*(a::AbstractString, b::RichRope) = concatenate(RichRope(a), b)
+
+function Base.:^(a::RichRope, b::Integer)
+    reps = [a for _ in 1:b]
+    return mergeleaves(reps)
+end
+
+function Base.write(io::IO, rope::RichRope)
+    if isleaf(rope)
+        write(io, rope.leaf)
+    else
+        write(io, rope.left)
+        write(io, rope.right)
+    end
+end
+
+Base.print(io::IO, rope::RichRope) = write(io, rope)
+
+function Base.show(io::IO, rope::RichRope)
+    print(io, '"')
+    if isleaf(rope)
+        print(io, escape_string(rope.leaf))
+    else
+        show_rope(io, rope.left)
+        show_rope(io, rope.right)
+    end
+    print(io, '"')
+end
+
+function show_rope(io::IO, rope::RichRope)
+    if isleaf(rope)
+        print(io, escape_string(rope.leaf))
+    else
+        show_rope(io, rope.left)
+        show_rope(io, rope.right)
+    end
+end
+
+function Base.convert(::Type{String}, rope::RichRope)
+   io = IOBuffer(sizehint=rope.sizeof)
+   write(io, rope)
+   String(take!(io))
+end
+
+Base.isempty(rope::RichRope) = rope.left === nothing && rope.right === nothing && rope.leaf == ""
+
 function string_metrics(s::String)
+    if s == ""
+        return 0, 0, 0, 0, true
+    end
     nl, len = 0, 0
     for (idx, char) in pairs(s)
         if isvalid(char)
