@@ -12,7 +12,7 @@ Supertype for Rope data structures.
 abstract type AbstractRope <: AbstractString end
 
 #  Smaller than usual, two cache lines?
-const LEAF_SIZE = 129  # +1 because we keep (minimum) 1 ASCII byte
+const LEAF_SIZE = 128  # +1 because we keep (minimum) 1 ASCII byte
 
 struct RichRope{S<:AbstractString} <: AbstractRope
     sizeof::Int     # In bytes / codeunits
@@ -61,7 +61,6 @@ function readinrope(io::IO)
             reading = false
         end
         v = vcat(remain, v1)
-        print(length(v), " ")
         s = String(v)
         len, g, nl, rem, valid = string_metrics(s)
         if !valid
@@ -69,7 +68,7 @@ function readinrope(io::IO)
         end
         if reading # There will always be a remainder, for grapheme integrity
             s_tmp = s[1:end-rem]
-            remain = codeunits(s[end-rem:end])
+            remain = codeunits(s[end-rem+1:end])
             s = s_tmp
         else
             g += 1
@@ -78,6 +77,7 @@ function readinrope(io::IO)
                 nl += 1
             end
         end
+        print(sizeof(s), " ")
         push!(leaves, RichRope(sizeof(s), 0, len, g, nl, s))
     end
     if length(leaves) == 1
@@ -87,6 +87,7 @@ function readinrope(io::IO)
 end
 
 function mergeleaves(leaves::Vector{RichRope})
+    println()
     tier = RichRope[]
     # to get one-based line indexing, we handle the first two special-case.
     left, right = leaves[1], leaves[2]
