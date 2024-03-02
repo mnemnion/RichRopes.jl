@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope
+export RichRope, AbstractRope, readinrope, cleave
 
 import Unicode: graphemes
 
@@ -125,7 +125,9 @@ function mergeleaves(leaves::Vector{RichRope{S}}) where {S<:AbstractString}
 end
 
 function concatenate(left::RichRope{S}, right::RichRope{S}) where {S}
-    isempty(left) && return right || isempty(right) && return(left)
+    isempty(left) && return right
+    isempty(right) && return left
+
     size = left.sizeof + right.sizeof
     len = left.length + right.length
     g = left.grapheme + right.grapheme
@@ -139,12 +141,45 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
     concatenate(left, convert(RichRope{S}, right))
 end
 
+function stringtoleaf(s::S) where {S}
+    len, g, nl = string_metrics(s)
+    RichRope(sizeof(s), 0, len, g, nl, s)
+end
+
+# Interface
+
+function cleave(rope::RichRope{S,Nothing} where {S}, index::Integer)
+    @checkbounds rope.sizeof < index && error("internal error, index out of bounds")
+    left, right = @inbounds rope.leaf[begin:index], rope.leaf[index+1:end]
+    return stringtoleaf(left), stringtoleaf(right)
+end
+
+function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
+    if index == 1
+        return rope, one(RichRope{S})
+    elseif index == rope.sizeof
+        return one(RichRope{S}), rope
+    elseif index < rope.left.sizeof
+        # println("left")
+        left, right = cleave(rope.left, index)
+        return left, concatenate(right, rope.right)
+    elseif index > rope.left.sizeof  # Djikstra was right
+        # println("right")
+        left, right = cleave(rope.right, index - rope.left.sizeof)
+        return concatenate(rope.left, left), right
+    else  # right down the middle
+        # println("middle")
+        return rope.left, rope.right
+    end
+end
+
 # Base methods
 
 Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
 # Favor the concrete type of the Rope
 Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S,b)))
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S,a)), b)
+Base.one(::Type{RichRope{S}}) where {S} = stringtoleaf(one(S))
 
 function Base.:^(a::RichRope, b::Integer)
     reps = [a for _ in 1:b]
@@ -265,6 +300,7 @@ function Base.convert(::Type{RichRope{S}}, rope::RichRope{R}) where {S<:Abstract
 end
 
 Base.isempty(rope::RichRope{S,Nothing}) where {S} = rope.leaf == one(S)
+# Note: this relies on proper construction, the interface will prevent empty branch ropes
 Base.isempty(rope::RichRope{S,RichRope{S}}) where {S} = false
 
 # Metrics
