@@ -24,7 +24,7 @@ struct RichRope{S<:AbstractString, T<:Union{AbstractRope{S},Nothing}} <: Abstrac
     leaf::S         # A non-leaf node sets this to ""
     left::T         # Left child (nothing for leaf)
     right::T        # Right child (nothing for leaf)
-    function RichRope(sizeof::Int,
+    function RichRope(size::Int,
                       depth::Int,
                       length::Int,
                       grapheme::Int,
@@ -32,18 +32,25 @@ struct RichRope{S<:AbstractString, T<:Union{AbstractRope{S},Nothing}} <: Abstrac
                       leaf::S,
                       left::RichRope{S},
                       right::RichRope{S}) where {S<:AbstractString}
-        new{S,RichRope{S}}(sizeof, depth, length, grapheme, linenum, leaf, left, right)
+        new{S,RichRope{S}}(size, depth, length, grapheme, linenum, leaf, left, right)
     end
-    function RichRope(sizeof::Int,
+    function RichRope(size::Int,
                       depth::Int,
                       length::Int,
                       grapheme::Int,
                       linenum::Int,
                       leaf::S) where {S<:AbstractString}
-        new{S,Nothing}(sizeof, depth, length, grapheme, linenum, leaf, nothing,nothing)
+        new{S,Nothing}(size, depth, length, grapheme, linenum, leaf, nothing,nothing)
     end
-    function RichRope(s,d,l,g,ln,str::S,left::Nothing,right::Nothing) where {S<:AbstractString}
-        new{S,Nothing}(s,d,l,g,ln,str,left,right)
+    function RichRope(size::Int,
+                      depth::Int,
+                      length::Int,
+                      grapheme::Int,
+                      linenum::Int,
+                      leaf::S,
+                      ::Nothing,
+                      ::Nothing) where {S<:AbstractString}
+        new{S,Nothing}(size, depth, length, grapheme, linenum, leaf, nothing,nothing)
     end
 end
 
@@ -62,22 +69,22 @@ readinrope(s::AbstractString, leafsize=LEAF_SIZE) = readinrope(IOBuffer(s), leaf
 function readinrope(io::IO, leafsize=LEAF_SIZE)
     reading = true
     remain::Vector{UInt8} = UInt8[]
-    leaves = RichRope{String}[]
+    leaves = RichRope{String,Nothing}[]
     while reading
         v1 = read(io, leafsize)
         if length(v1) < leafsize
             reading = false
         end
         v = vcat(remain, v1)
-        s = String(v)
+        s = String(copy(v))
         len, g, nl, rem, valid = string_metrics(s)
         if !valid
             error("Invalid UTF-8 on line $len")
         end
         if reading # There will always be a remainder, for grapheme integrity
-            s_tmp = s[1:end-rem]
-            remain = codeunits(s[end-rem+1:end])
-            s = s_tmp
+            v_tmp = @views v[1:end-rem]
+            remain = v[end-rem+1:end]
+            s = String(v_tmp)
         elseif !isempty(s)
             g += 1
             len += 1
@@ -85,8 +92,8 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
                 nl += 1
             end
         end
-        # print(sizeof(s), " ")
-        push!(leaves, RichRope(sizeof(s), 0, len, g, nl, s))
+        rope = RichRope(sizeof(s), 0, len, g, nl, s)
+        push!(leaves, rope)
     end
     if length(leaves) == 1
         return only(leaves)
@@ -94,7 +101,7 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
     return mergeleaves(leaves)
 end
 
-function mergeleaves(leaves::Vector{RichRope{S}}) where {S<:AbstractString}
+function mergeleaves(leaves::Vector{RichRope{S,Nothing}}) where {S}
     tier = []
     # to get one-based line indexing, we handle the first two special-case.
     left, right = leaves[1], leaves[2]
@@ -149,28 +156,31 @@ end
 # Interface
 
 function cleave(rope::RichRope{S,Nothing} where {S}, index::Integer)
-    @checkbounds rope.sizeof < index && error("internal error, index out of bounds")
-    left, right = @inbounds rope.leaf[begin:index], rope.leaf[index+1:end]
+    @boundscheck rope.sizeof < index && error("internal error, index out of bounds")
+    left, right = @inbounds _cutstring(rope.leaf, index)
     return stringtoleaf(left), stringtoleaf(right)
 end
 
 function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
     if index == 1
         return rope, one(RichRope{S})
-    elseif index == rope.sizeof
+    elseif index == rope.length
         return one(RichRope{S}), rope
-    elseif index < rope.left.sizeof
-        # println("left")
+    elseif index < rope.left.length
         left, right = cleave(rope.left, index)
         return left, concatenate(right, rope.right)
-    elseif index > rope.left.sizeof  # Djikstra was right
-        # println("right")
-        left, right = cleave(rope.right, index - rope.left.sizeof)
+    elseif index > rope.left.length
+        left, right = cleave(rope.right, index - rope.left.length)
         return concatenate(rope.left, left), right
     else  # right down the middle
-        # println("middle")
         return rope.left, rope.right
     end
+end
+
+function _cutstring(s::AbstractString, i::Integer)
+    l = nthpoint(s, i)  # Checks bounds
+    r = nextind(s,l)
+    return s[begin:l], s[r:end]
 end
 
 # Base methods
@@ -203,11 +213,12 @@ function Base.:(==)(a::RichRope, b::RichRope)
 end
 
 function Base.:(==)(a::RichRope, b::AbstractString)
-    a.sizeof != sizeof(b) && return false
+    a.sizeof != sizeof(b) && (#=println("$(a.sizeof) != $(sizeof(b))");=# return false)
 
     same = true
     for (c1, c2) in zip(a, b)
         if c1 != c2
+            println("! $c1, $c2")
             same = false
             break
         end
@@ -275,18 +286,6 @@ function Base.iterate(::RichRope, state)
     end
 end
 
-function Base.show(io::IO, rope::RichRope)
-    print(io, '"')
-    show_rope(io, rope)
-    print(io, '"')
-end
-
-function show_rope(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
-    show_rope(io, rope.left)
-    show_rope(io, rope.right)
-end
-show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string(rope.leaf))
-
 function Base.convert(::Type{String}, rope::RichRope)
    io = IOBuffer(sizehint=rope.sizeof)
    write(io, rope)
@@ -300,13 +299,51 @@ function Base.convert(::Type{RichRope{S}}, rope::RichRope{R}) where {S<:Abstract
 end
 
 Base.isempty(rope::RichRope{S,Nothing}) where {S} = rope.leaf == one(S)
-# Note: this relies on proper construction, the interface will prevent empty branch ropes
+# Note: this relies on proper construction, the interface will prevent empty branch
 Base.isempty(rope::RichRope{S,RichRope{S}}) where {S} = false
+
+function Base.show(io::IO, ::MIME"text/plain", r::RichRope{S}) where {S}
+    childtype = r.left === nothing ? "Nothing" : "RichRope{$S}"
+    print(io, "RichRope{$S, $childtype}")
+    if isleaf(r)
+        println(io, " (leaf) $(repr(r.leaf))")
+    else
+        println(io, "\n   codeunits: $(r.sizeof)")
+        println(io, "   length: $(r.length)")
+        println(io, "   graphemes: $(r.grapheme)")
+        println(io, "   lines: $(r.linenum)")
+        println(io, "   max depth: $(r.depth)")
+    end
+end
+
+function Base.show(io::IO, rope::RichRope)
+    print(io, '"')
+    show_rope(io, rope)
+    print(io, '"')
+end
+
+function show_rope(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
+    show_rope(io, rope.left)
+    show_rope(io, rope.right)
+end
+show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string(rope.leaf))
 
 # Metrics
 
 isleaf(a::RichRope{S,Nothing}) where {S} = true
 isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
+
+function nthpoint(s::AbstractString, i::Integer)
+    @boundscheck i > length(s) && throw(BoundsError("index out of bounds"))
+     n = 1
+    for count in 1:sizeof(s)
+        if count == i
+            break
+        end
+        n = @inbounds nextind(s, n)
+    end
+    return n
+end
 
 function string_metrics(s::S) where {S<:AbstractString}
     if s == one(S)
@@ -316,7 +353,9 @@ function string_metrics(s::S) where {S<:AbstractString}
     for (idx, char) in pairs(s)
         if isvalid(char)
             len += 1
-        elseif idx + ncodeunits(char) != ncodeunits(s)
+        elseif idx == 1  #other half of broken codepoint
+            continue
+        elseif idx + ncodeunits(char) != ncodeunits(s) + 1
             # We won't use most of the values so placeholders are fine
             return 0, 0, nl, 0, false
         else
@@ -347,20 +386,6 @@ function string_metrics(s::S) where {S<:AbstractString}
         nl -= 1
     end
     return len, g, nl, rem, true # end may be malformed but string itself is valid
-end
-
-function Base.show(io::IO, ::MIME"text/plain", r::RichRope{S}) where {S}
-    childtype = r.left === nothing ? "Nothing" : "RichRope{$S}"
-    print(io, "RichRope{$S, $childtype}")
-    if isleaf(r)
-        println(io, " (leaf) $(repr(r.leaf))")
-    else
-        println(io, "\n   codeunits: $(r.sizeof)")
-        println(io, "   length: $(r.length)")
-        println(io, "   graphemes: $(r.grapheme)")
-        println(io, "   lines: $(r.linenum)")
-        println(io, "   max depth: $(r.depth)")
-    end
 end
 
 end  # Module RichRopes
