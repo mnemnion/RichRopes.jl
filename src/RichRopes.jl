@@ -55,6 +55,8 @@ function RichRope(io::IO)
     readinrope(io)
 end
 
+# Builder methods
+
 readinrope(s::AbstractString, leafsize=LEAF_SIZE) = readinrope(IOBuffer(s), leafsize)
 
 function readinrope(io::IO, leafsize=LEAF_SIZE)
@@ -137,15 +139,51 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
     concatenate(left, convert(RichRope{S}, right))
 end
 
-isleaf(a::RichRope{S,Nothing}) where {S} = true
-isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
+# Base methods
 
 Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
 # Favor the concrete type of the Rope
 Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S,b)))
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S,a)), b)
 
+function Base.:^(a::RichRope, b::Integer)
+    reps = [a for _ in 1:b]
+    return mergeleaves(reps)
+end
+
+function Base.:(==)(a::RichRope, b::RichRope)
+    lmatch = a.grapheme != b.grapheme ? false :
+             a.length != b.length ? false :
+             a.sizeof != b.sizeof ? false : true
+    lmatch || return false
+
+    same = true
+    for (c1, c2) in zip(a, b)
+        if c1 != c2
+            same = false
+            break
+        end
+    end
+    return same
+end
+
+function Base.:(==)(a::RichRope, b::AbstractString)
+    a.sizeof != sizeof(b) && return false
+
+    same = true
+    for (c1, c2) in zip(a, b)
+        if c1 != c2
+            same = false
+            break
+        end
+    end
+    return same
+end
+
+Base.:(==)(a::AbstractString, b::RichRope) = b == a
+
 Base.ncodeunits(rope::RichRope) = rope.sizeof
+Base.sizeof(rope::RichRope) = rope.sizeof
 Base.length(rope::RichRope) = rope.length
 
 function Base.collect(rope::RichRope)
@@ -156,11 +194,6 @@ function Base.collect(rope::RichRope)
     chars
 end
 
-function Base.:^(a::RichRope, b::Integer)
-    reps = [a for _ in 1:b]
-    return mergeleaves(reps)
-end
-
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
 function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
     write(io, rope.left) + write(io, rope.right)
@@ -169,7 +202,7 @@ end
 Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 function Base.iterate(rope::RichRope)
-    stack = [rope]
+    stack = RichRope[rope]
     if isleaf(rope)
         return rope.leaf[1], (stack, 1)
     end
@@ -233,6 +266,11 @@ end
 
 Base.isempty(rope::RichRope{S,Nothing}) where {S} = rope.leaf == one(S)
 Base.isempty(rope::RichRope{S,RichRope{S}}) where {S} = false
+
+# Metrics
+
+isleaf(a::RichRope{S,Nothing}) where {S} = true
+isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
 
 function string_metrics(s::S) where {S<:AbstractString}
     if s == one(S)
