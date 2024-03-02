@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, readinrope
+export RichRope, AbstractRope, readinrope
 
 import Unicode: graphemes
 
@@ -9,22 +9,22 @@ import Unicode: graphemes
 
 Supertype for Rope data structures.
 """
-abstract type AbstractRope <: AbstractString end
+abstract type AbstractRope{S<:AbstractString} <: AbstractString end
 
 #  Smaller than usual, four cache lines?
 #  Configurable in any case
 const LEAF_SIZE = 256
 
-struct RichRope{S<:AbstractString} <: AbstractRope
+struct RichRope{S<:AbstractString, T<:Union{AbstractRope{S},Nothing}} <: AbstractRope{S}
     sizeof::Int     # In bytes / codeunits
     depth::Int      # Depth of tree at Rope node
     length::Int     # Number of codepoints
     grapheme::Int   # Number of graphemes
     linenum::Int    # Number of '\n' under Rope node
     leaf::S         # A non-leaf node sets this to ""
-    left::Union{RichRope{S},Nothing}   # Left child (nothing for leaf)
-    right::Union{RichRope{S},Nothing}  # Right child (nothing for leaf)
-    function RichRope{S}(sizeof::Int,
+    left::T         # Left child (nothing for leaf)
+    right::T        # Right child (nothing for leaf)
+    function RichRope(sizeof::Int,
                       depth::Int,
                       length::Int,
                       grapheme::Int,
@@ -32,18 +32,18 @@ struct RichRope{S<:AbstractString} <: AbstractRope
                       leaf::S,
                       left::RichRope{S},
                       right::RichRope{S}) where {S<:AbstractString}
-        new{S}(sizeof, depth, length, grapheme, linenum, leaf, left, right)
+        new{S,RichRope{S}}(sizeof, depth, length, grapheme, linenum, leaf, left, right)
     end
-    function RichRope{S}(sizeof::Int,
+    function RichRope(sizeof::Int,
                       depth::Int,
                       length::Int,
                       grapheme::Int,
                       linenum::Int,
                       leaf::S) where {S<:AbstractString}
-        new{S}(sizeof, depth, length, grapheme, linenum, leaf, nothing,nothing)
+        new{S,Nothing}(sizeof, depth, length, grapheme, linenum, leaf, nothing,nothing)
     end
-    function RichRope{S}(s,d,l,g,ln,str::S,left::Nothing,right::Nothing) where {S<:AbstractString}
-        new{S}(s,d,l,g,ln,str,left,right)
+    function RichRope(s,d,l,g,ln,str::S,left::Nothing,right::Nothing) where {S<:AbstractString}
+        new{S,Nothing}(s,d,l,g,ln,str,left,right)
     end
 end
 
@@ -84,7 +84,7 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
             end
         end
         # print(sizeof(s), " ")
-        push!(leaves, RichRope{String}(sizeof(s), 0, len, g, nl, s))
+        push!(leaves, RichRope(sizeof(s), 0, len, g, nl, s))
     end
     if length(leaves) == 1
         return only(leaves)
@@ -93,19 +93,17 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
 end
 
 function mergeleaves(leaves::Vector{RichRope{S}}) where {S<:AbstractString}
-    println()
-    tier = RichRope{S}[]
+    tier = []
     # to get one-based line indexing, we handle the first two special-case.
     left, right = leaves[1], leaves[2]
     size = left.sizeof + right.sizeof
     len = left.length + right.length
     g = left.grapheme + right.grapheme
     nl = left.linenum + right.linenum + 1
-    push!(tier, RichRope{S}(size, 1, len, g, nl, "", left, right))
+    push!(tier, RichRope(size, 1, len, g, nl, one(S), left, right))
     leaves = leaves[3:end]
     crunching = true
     while crunching
-        # println("leaf length: $(length(leaves))")
         for i in 1:2:length(leaves)
             if i < length(leaves)
                 left, right = leaves[i], leaves[i+1]
@@ -118,7 +116,7 @@ function mergeleaves(leaves::Vector{RichRope{S}}) where {S<:AbstractString}
             crunching = false
         else
             leaves = tier
-            tier = RichRope{S}[]
+            tier = []
         end
     end
     return only(tier)
@@ -131,7 +129,7 @@ function concatenate(left::RichRope{S}, right::RichRope{S}) where {S}
     g = left.grapheme + right.grapheme
     nl = left.linenum + right.linenum
     depth = max(left.depth, right.depth) + 1
-    RichRope{S}(size, depth, len, g, nl, one(S), left, right)
+    RichRope(size, depth, len, g, nl, one(S), left, right)
 end
 
 function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
@@ -139,7 +137,8 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
     concatenate(left, convert(RichRope{S}, right))
 end
 
-isleaf(a::RichRope{S}) where {S} = a.leaf !== one(S)
+isleaf(a::RichRope{S,Nothing}) where {S} = true
+isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
 
 Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
 # Favor the concrete type of the Rope
@@ -147,6 +146,7 @@ Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(c
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S,a)), b)
 
 Base.ncodeunits(rope::RichRope) = rope.sizeof
+Base.length(rope::RichRope) = rope.length
 
 function Base.collect(rope::RichRope)
     chars = Char[]
@@ -161,16 +161,12 @@ function Base.:^(a::RichRope, b::Integer)
     return mergeleaves(reps)
 end
 
-function Base.write(io::IO, rope::RichRope)
-    if isleaf(rope)
-        write(io, rope.leaf)
-    else
-        write(io, rope.left)
-        write(io, rope.right)
-    end
+Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
+function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
+    write(io, rope.left) + write(io, rope.right)
 end
 
-Base.print(io::IO, rope::RichRope) = write(io, rope)
+Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 function Base.iterate(rope::RichRope)
     stack = [rope]
@@ -213,23 +209,15 @@ end
 
 function Base.show(io::IO, rope::RichRope)
     print(io, '"')
-    if isleaf(rope)
-        print(io, escape_string(rope.leaf))
-    else
-        show_rope(io, rope.left)
-        show_rope(io, rope.right)
-    end
+    show_rope(io, rope)
     print(io, '"')
 end
 
-function show_rope(io::IO, rope::RichRope)
-    if isleaf(rope)
-        print(io, escape_string(rope.leaf))
-    else
-        show_rope(io, rope.left)
-        show_rope(io, rope.right)
-    end
+function show_rope(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
+    show_rope(io, rope.left)
+    show_rope(io, rope.right)
 end
+show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string(rope.leaf))
 
 function Base.convert(::Type{String}, rope::RichRope)
    io = IOBuffer(sizehint=rope.sizeof)
@@ -237,16 +225,17 @@ function Base.convert(::Type{String}, rope::RichRope)
    String(take!(io))
 end
 
-function Base.convert(::Type{RichRope{S}}, rope::RichRope{R}) where {S<:AbstractString,R<:AbstractString}
+function Base.convert(::Type{RichRope{S}}, rope::RichRope{R}) where {S<:AbstractString, R<:AbstractString}
     left = rope.left === nothing ? nothing : convert(RichRope{S}, rope.left)
     right = rope.right === nothing ? nothing : convert(RichRope{S}, rope.right)
-    RichRope{S}(rope.length, rope.depth, rope.length, rope.grapheme, rope.linenum, convert(S, rope.leaf), left, right)
+    RichRope(rope.length, rope.depth, rope.length, rope.grapheme, rope.linenum, convert(S, rope.leaf), left, right)
 end
 
-Base.isempty(rope::RichRope{S}) where {S} = rope.left === nothing && rope.right === nothing && rope.leaf == one(S)
+Base.isempty(rope::RichRope{S,Nothing}) where {S} = rope.leaf == one(S)
+Base.isempty(rope::RichRope{S,RichRope{S}}) where {S} = false
 
-function string_metrics(s::AbstractString)
-    if s == ""
+function string_metrics(s::S) where {S<:AbstractString}
+    if s == one(S)
         return 0, 0, 0, 0, true
     end
     nl, len = 0, 0
@@ -287,17 +276,17 @@ function string_metrics(s::AbstractString)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", r::RichRope{S}) where {S}
-   print(io, "RichRope{$S}")
-   if r.leaf == one(S)
+    childtype = r.left === nothing ? "Nothing" : "RichRope{$S}"
+    print(io, "RichRope{$S, $childtype}")
+    if isleaf(r)
+        println(io, " (leaf) $(repr(r.leaf))")
+    else
         println(io, "\n   codeunits: $(r.sizeof)")
         println(io, "   length: $(r.length)")
         println(io, "   graphemes: $(r.grapheme)")
         println(io, "   lines: $(r.linenum)")
-        println(io, "   max depth:  $(r.depth)")
-    else
-        println(io, " (leaf) $(repr(r.leaf))")
+        println(io, "   max depth: $(r.depth)")
     end
 end
-
 
 end  # Module RichRopes
