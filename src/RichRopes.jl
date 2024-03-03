@@ -87,15 +87,9 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
             if last == "\n"
                 nl -= 1
             end
-            v_tmp = v[1:end- ncodeunits(last)]
+            resize!(v, length(v) - ncodeunits(last))
             remain = collect(codeunits(last))
-            s = String(v_tmp)
-        elseif !isempty(s)
-            g += 1
-            len += 1
-            if s[end] == '\n'
-                nl += 1
-            end
+            s = String(v)
         end
         rope = RichRope(sizeof(s), 0, len, g, nl, s)
         push!(leaves, rope)
@@ -158,6 +152,15 @@ function stringtoleaf(s::S) where {S<:AbstractString}
     RichRope(sizeof(s), 0, len, g, nl, s)
 end
 
+function collectleaves(rope::RichRope{S,RichRope{S}},
+                       leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
+    collectleaves(rope.left, leaves)
+    collectleaves(rope.right, leaves)
+end
+
+function collectleaves(rope::RichRope{S,Nothing}, leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
+    push!(leaves,rope)
+end
 # Interface
 
 function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractString}
@@ -283,9 +286,18 @@ function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
     return left * right
 end
 
+function Base.codeunit(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
+    if index <= rope.left.sizeof
+        codeunit(rope.left, index)::UInt8
+    else
+        codeunit(rope.right, index - rope.left.sizeof)::UInt8
+    end
+end
+
+Base.codeunit(rope::RichRope{S,Nothing} where {S<:AbstractString}, index::Integer) = codeunit(rope.leaf, index)
+
 Base.firstindex(rope::RichRope) =  1
 
-# TODO there's a fastpath for this one
 Base.lastindex(rope::RichRope) = rope.length
 
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
@@ -320,7 +332,9 @@ function Base.iterate(::RichRope, state)
         return stack[end].leaf[1], (stack, 1)
     end
     ind = nextind(stack[end].leaf, i)
-    if ind > stack[end].sizeof
+    if ind ≤ stack[end].sizeof
+        return stack[end].leaf[ind], (stack, ind)
+    else
         pop!(stack) # drop the leaf
         if isempty(stack)
             return nothing
@@ -331,8 +345,6 @@ function Base.iterate(::RichRope, state)
             push!(stack, stack[end].left)
         end
         return stack[end].leaf[1], (stack, 1)
-    else
-        return stack[end].leaf[ind], (stack, ind)
     end
 end
 
@@ -429,5 +441,15 @@ function string_metrics(s::S) where {S<:AbstractString}
     end
     return len, g, nl, last, true # end may be malformed but string itself is valid
 end
+
+const Fib = Int[1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597,
+                2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418,
+                317811, 514229, 832040, 1346269, 2178309, 3524578, 5702887, 9227465,
+                14930352, 24157817, 39088169, 63245986, 102334155, 165580141, 267914296,
+                433494437, 701408733, 1134903170, 1836311903, 2971215073, 4807526976,
+                7778742049, 12586269025, 20365011074, 32951280099, 53316291173,
+                86267571272, 139583862445, 225851433717, 365435296162, 591286729879,
+                956722026041, 1548008755920, 2504730781961, 4052739537881,
+                6557470319842, 10610209857723, 17167680177565]
 
 end  # Module RichRopes

@@ -24,7 +24,17 @@ import Unicode: graphemes
             rope = readinrope(ref^i, 17)
             @test sizeof(rope) == size * i
             @test length(rope) == len * i
+            @test rope.length == length(String(rope))
             @test rope.grapheme == graph * i
+        end
+    end
+    @testset "Codeunits" begin
+        ref = "aδ∇🍆h"
+        w = ncodeunits(ref)
+        rope = readinrope(ref^23, 28)
+        for i in 1:ncodeunits(rope)
+            I = (i - 1) % w + 1
+            @test codeunit(rope, i) == codeunit(ref, I)
         end
     end
     @testset "Concat / * / == " begin
@@ -40,10 +50,10 @@ import Unicode: graphemes
         rope = readinrope(ref, 11)
         clip1 = deletenchars(rope, 1, 26)
         @test clip1 == az^2
-        clip2 = deletenchars(rope, 27, 26)
+        clip2 = deletenchars(rope, 26, 26)
         @test clip2 == az^2
-        clip3 = deletenchars(rope, 53, 26)
+        clip3 = deletenchars(rope, 52, 26)
         @test clip3 == az^2
-        @test_throws BoundsError deletenchars(rope, 53, 27)
+        @test_throws BoundsError deletenchars(rope, 52, 27)
     end
 end
