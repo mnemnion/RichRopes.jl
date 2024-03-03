@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave
+export RichRope, AbstractRope, readinrope, cleave, deletenchars
 
 import Unicode: graphemes
 
@@ -77,13 +77,18 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
         end
         v = vcat(remain, v1)
         s = String(copy(v))
-        len, g, nl, rem, valid = string_metrics(s)
+        len, g, nl, last, valid = string_metrics(s)
         if !valid
             error("Invalid UTF-8 on line $len")
         end
         if reading # There will always be a remainder, for grapheme integrity
-            v_tmp = @views v[1:end-rem]
-            remain = v[end-rem+1:end]
+            len -= length(last)
+            g -= 1
+            if last == "\n"
+                nl -= 1
+            end
+            v_tmp = v[1:end- ncodeunits(last)]
+            remain = collect(codeunits(last))
             s = String(v_tmp)
         elseif !isempty(s)
             g += 1
@@ -148,16 +153,16 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
     concatenate(left, convert(RichRope{S}, right))
 end
 
-function stringtoleaf(s::S) where {S}
+function stringtoleaf(s::S) where {S<:AbstractString}
     len, g, nl = string_metrics(s)
     RichRope(sizeof(s), 0, len, g, nl, s)
 end
 
 # Interface
 
-function cleave(rope::RichRope{S,Nothing} where {S}, index::Integer)
+function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractString}
     @boundscheck rope.sizeof < index && error("internal error, index out of bounds")
-    left, right = @inbounds _cutstring(rope.leaf, index)
+    left, right = @inbounds _cutstring(rope.leaf, index)::Tuple{S,S}
     return stringtoleaf(left), stringtoleaf(right)
 end
 
@@ -168,17 +173,37 @@ function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
         return one(RichRope{S}), rope
     elseif index < rope.left.length
         left, right = cleave(rope.left, index)
-        return left, concatenate(right, rope.right)
+        return left, right * rope.right
     elseif index > rope.left.length
         left, right = cleave(rope.right, index - rope.left.length)
-        return concatenate(rope.left, left), right
+        return rope.left * left, right
     else  # right down the middle
         return rope.left, rope.right
     end
 end
 
-function _cutstring(s::AbstractString, i::Integer)
+function deletenchars(rope::RichRope, index::Integer, n::Integer)
+    n == 0 && return rope
+    if !(0 < index ≤ rope.length) || index + n > rope.length
+        throw(BoundsError("can't delete in range provided"))
+    end
+    if index - 1 == 0
+        _, right = cleave(rope, n)
+        return right
+    end
+    left, right = cleave(rope, index - 1)
+    if length(right) == n
+        return left
+    end
+    _, new_right = cleave(right, n)
+    return left * new_right
+end
+
+function _cutstring(s::S, i::Integer) where {S<:AbstractString}
     l = nthpoint(s, i)  # Checks bounds
+    if l ≥ sizeof(s)
+        return s, one(S)
+    end
     r = nextind(s,l)
     return s[begin:l], s[r:end]
 end
@@ -240,6 +265,29 @@ function Base.collect(rope::RichRope)
     chars
 end
 
+function Base.getindex(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
+    if index <= rope.left.length
+        getindex(rope.left, index)::Char
+    else
+        getindex(rope.right, index - rope.left.length)::Char
+    end
+end
+
+function Base.getindex(rope::RichRope{S,Nothing} where {S<:AbstractString}, index::Integer)::Char
+    rope.leaf[nthpoint(rope.leaf, index)]
+end
+
+function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
+    _, left = cleave(rope, range.start)
+    right, _ = cleave(rope, range.stop)
+    return left * right
+end
+
+Base.firstindex(rope::RichRope) =  1
+
+# TODO there's a fastpath for this one
+Base.lastindex(rope::RichRope) = rope.length
+
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
 function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
     write(io, rope.left) + write(io, rope.right)
@@ -247,6 +295,8 @@ end
 
 Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
+
+# TODO make a struct to implement the iterator interface
 function Base.iterate(rope::RichRope)
     stack = RichRope[rope]
     if isleaf(rope)
@@ -333,16 +383,10 @@ show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string
 isleaf(a::RichRope{S,Nothing}) where {S} = true
 isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
 
+@inline
 function nthpoint(s::AbstractString, i::Integer)
     @boundscheck i > length(s) && throw(BoundsError("index out of bounds"))
-     n = 1
-    for count in 1:sizeof(s)
-        if count == i
-            break
-        end
-        n = @inbounds nextind(s, n)
-    end
-    return n
+    @inbounds nextind(s, 0, i)
 end
 
 function string_metrics(s::S) where {S<:AbstractString}
@@ -374,18 +418,16 @@ function string_metrics(s::S) where {S<:AbstractString}
     #
     # TODO right now we care about correctness, but this allocates a bunch of SubStrings.
     # we'll want to rewrite it to use the low-level functions.
-    g = -1
+    # Note: this breaks long graphemes which it can't know about (because some are missing)
+    # into smaller graphemes, backtracking at the end of a string, so it needs rewriting
+    # using low-level grapheme break checks.
+    g = 0
     last = nothing
     for glyph in graphemes(s)
         g += 1
         last = glyph
     end
-    len -= length(last)
-    rem = ncodeunits(last)
-    if last == "\n"
-        nl -= 1
-    end
-    return len, g, nl, rem, true # end may be malformed but string itself is valid
+    return len, g, nl, last, true # end may be malformed but string itself is valid
 end
 
 end  # Module RichRopes

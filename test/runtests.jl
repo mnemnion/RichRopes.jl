@@ -7,10 +7,6 @@ import Unicode: graphemes
     @testset "Code quality (Aqua.jl)" begin
        # Aqua.test_all(RichRopes)
     end
-    @testset "readinrope" begin
-        ref = "abcδe∇g🍆h"^100
-        rope = readinrope(ref, 27)
-    end
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100
         rope = readinrope(ref, 28)
@@ -37,5 +33,17 @@ import Unicode: graphemes
             rope = readinrope(ref, 7)
            @test rope * rope == ref * ref
         end
+    end
+    @testset "deletenchars" begin
+        az = String(collect('a':'z'))
+        ref = az^3
+        rope = readinrope(ref, 11)
+        clip1 = deletenchars(rope, 1, 26)
+        @test clip1 == az^2
+        clip2 = deletenchars(rope, 27, 26)
+        @test clip2 == az^2
+        clip3 = deletenchars(rope, 53, 26)
+        @test clip3 == az^2
+        @test_throws BoundsError deletenchars(rope, 53, 27)
     end
 end
