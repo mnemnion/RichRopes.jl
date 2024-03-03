@@ -55,7 +55,7 @@ struct RichRope{S<:AbstractString, T<:Union{AbstractRope{S},Nothing}} <: Abstrac
 end
 
 function RichRope(s::AbstractString)
-    readinrope(IOBuffer(s))
+    readinrope(s)
 end
 
 function RichRope(io::IO)
@@ -64,7 +64,13 @@ end
 
 # Builder methods
 
-readinrope(s::AbstractString, leafsize=LEAF_SIZE) = readinrope(IOBuffer(s), leafsize)
+function readinrope(s::AbstractString, leafsize=LEAF_SIZE)
+    if sizeof(s) < leafsize
+        stringtoleaf(s)
+    else
+        readinrope(IOBuffer(s), leafsize)
+    end
+end
 
 function readinrope(io::IO, leafsize=LEAF_SIZE)
     reading = true
@@ -92,6 +98,7 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
             s = String(v)
         end
         rope = RichRope(sizeof(s), 0, len, g, nl, s)
+
         push!(leaves, rope)
     end
     if length(leaves) == 1
@@ -109,7 +116,7 @@ function mergeleaves(leaves::Vector{RichRope{S,Nothing}}) where {S}
     g = left.grapheme + right.grapheme
     nl = left.linenum + right.linenum + 1
     push!(tier, RichRope(size, 1, len, g, nl, one(S), left, right))
-    leaves = leaves[3:end]
+    leaves = @views leaves[3:end]
     crunching = true
     while crunching
         for i in 1:2:length(leaves)
@@ -148,7 +155,10 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
 end
 
 function stringtoleaf(s::S) where {S<:AbstractString}
-    len, g, nl = string_metrics(s)
+    len, g, nl, _, valid = string_metrics(s)
+    if !valid
+        error("invalid UTF-8 at index $len")
+    end
     RichRope(sizeof(s), 0, len, g, nl, s)
 end
 
@@ -259,6 +269,7 @@ Base.:(==)(a::AbstractString, b::RichRope) = b == a
 Base.ncodeunits(rope::RichRope) = rope.sizeof
 Base.sizeof(rope::RichRope) = rope.sizeof
 Base.length(rope::RichRope) = rope.length
+Base.eltype(::Type{RichRope{S}}) where {S<:AbstractString} = eltype(S)
 
 function Base.collect(rope::RichRope)
     chars = Char[]
@@ -286,6 +297,8 @@ function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
     return left * right
 end
 
+Base.eachindex(rope::RichRope) = 1:rope.length
+
 function Base.codeunit(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
     if index <= rope.left.sizeof
         codeunit(rope.left, index)::UInt8
@@ -300,6 +313,11 @@ Base.firstindex(rope::RichRope) =  1
 
 Base.lastindex(rope::RichRope) = rope.length
 
+# We always check validity building a string
+Base.isvalid(::RichRope) = true
+Base.isvalid(::RichRope, ::Integer) = true
+Base.isascii(rope::RichRope) = rope.sizeof == rope.length
+
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
 function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
     write(io, rope.left) + write(io, rope.right)
@@ -309,25 +327,24 @@ Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 
 # TODO make a struct to implement the iterator interface
-function Base.iterate(rope::RichRope)
-    stack = RichRope[rope]
-    if isleaf(rope)
-        return rope.leaf[1], (stack, 1)
-    end
-    r = rope.left
+function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
+    stack = RichRope{S}[rope]
+    r = rope.left::RichRope{S}
     while !isleaf(r)
         push!(stack, r)
-        r = r.left
+        r = r.left::RichRope{S}
     end
     push!(stack, r)
     return r.leaf[1], (stack, 1)
 end
 
-function Base.iterate(::RichRope, state)
+Base.iterate(rope::RichRope{S,Nothing} where {S}) = iterate(rope.leaf)
+
+function Base.iterate(::RichRope{S}, state) where {S<:AbstractString}
     stack, i = state
     if !isleaf(stack[end])
         while !isleaf(stack[end])
-            push!(stack, stack[end].left)
+            push!(stack, stack[end].left::RichRope{S})
         end
         return stack[end].leaf[1], (stack, 1)
     end
@@ -340,9 +357,9 @@ function Base.iterate(::RichRope, state)
             return nothing
         end
         this = pop!(stack)
-        push!(stack, this.right)
+        push!(stack, this.right::RichRope)
         while !isleaf(stack[end])
-            push!(stack, stack[end].left)
+            push!(stack, stack[end].left::RichRope)
         end
         return stack[end].leaf[1], (stack, 1)
     end
@@ -355,6 +372,8 @@ function Base.convert(::Type{String}, rope::RichRope)
 end
 
 function Base.convert(::Type{RichRope{S}}, rope::RichRope{R}) where {S<:AbstractString, R<:AbstractString}
+    S == R && return rope
+
     left = rope.left === nothing ? nothing : convert(RichRope{S}, rope.left)
     right = rope.right === nothing ? nothing : convert(RichRope{S}, rope.right)
     RichRope(rope.length, rope.depth, rope.length, rope.grapheme, rope.linenum, convert(S, rope.leaf), left, right)
@@ -392,8 +411,10 @@ show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string
 
 # Metrics
 
-isleaf(a::RichRope{S,Nothing}) where {S} = true
-isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
+isleaf(a::RichRope{S}) where {S} = a.leaf != one(S)
+
+# isleaf(a::RichRope{S,Nothing}) where {S} = true
+# isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
 
 @inline
 function nthpoint(s::AbstractString, i::Integer)
@@ -409,11 +430,10 @@ function string_metrics(s::S) where {S<:AbstractString}
     for (idx, char) in pairs(s)
         if isvalid(char)
             len += 1
-        elseif idx == 1  #other half of broken codepoint
-            continue
         elseif idx + ncodeunits(char) != ncodeunits(s) + 1
-            # We won't use most of the values so placeholders are fine
-            return 0, 0, nl, 0, false
+            # These values are for reporting errors, note that
+            # "length" is instead the index of the error
+            return idx, 0, nl, 0, false
         else
             len += 1
         end
@@ -442,7 +462,8 @@ function string_metrics(s::S) where {S<:AbstractString}
     return len, g, nl, last, true # end may be malformed but string itself is valid
 end
 
-const Fib = Int[1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597,
+# Skipping the ones we don't use...
+const Fib = Int[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597,
                 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418,
                 317811, 514229, 832040, 1346269, 2178309, 3524578, 5702887, 9227465,
                 14930352, 24157817, 39088169, 63245986, 102334155, 165580141, 267914296,
