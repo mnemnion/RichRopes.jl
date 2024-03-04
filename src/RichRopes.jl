@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave, deletenchars
+export RichRope, AbstractRope, readinrope, cleave, deletechars
 
 import Unicode: graphemes
 
@@ -174,16 +174,16 @@ end
 # Interface
 
 function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractString}
-    @boundscheck rope.sizeof < index && error("internal error, index out of bounds")
+    @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, index))
     left, right = @inbounds _cutstring(rope.leaf, index)::Tuple{S,S}
     return stringtoleaf(left), stringtoleaf(right)
 end
 
 function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
-    if index == 1
-        return rope, one(RichRope{S})
-    elseif index == rope.length
+    if index == 0
         return one(RichRope{S}), rope
+    elseif index == rope.length
+        return rope, one(RichRope{S})
     elseif index < rope.left.length
         left, right = cleave(rope.left, index)
         return left, right * rope.right
@@ -195,21 +195,34 @@ function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
     end
 end
 
-function deletenchars(rope::RichRope, index::Integer, n::Integer)
-    n == 0 && return rope
-    if !(0 < index ≤ rope.length) || index + n > rope.length
-        throw(BoundsError("can't delete in range provided"))
+function part(rope::RichRope{S}, index::Integer, n::Integer) where {S}
+    n == 0 && return rope, one(RichRope{S})
+    if !(0 < index ≤ rope.length)
+        throw(BoundsError(rope, index))
+    elseif index + n > rope.length
+        throw(BoundsError(rope, index + n))
     end
-    if index - 1 == 0
-        _, right = cleave(rope, n)
-        return right
-    end
-    left, right = cleave(rope, index - 1)
+    left, right = cleave(rope, index)
     if length(right) == n
-        return left
+        return left, one(RichRope{S})
     end
     _, new_right = cleave(right, n)
-    return left * new_right
+    println(left)
+    println(new_right)
+    return left, new_right
+end
+
+function part(rope::RichRope, range::UnitRange{<:Integer})
+    part(rope, range.start, 1 + range.stop - range.start)
+end
+
+function deletechars(rope::RichRope, index::Integer, n::Integer)
+    left, right = part(rope, index, n)
+    return left * right
+end
+
+function deletechars(rope::RichRope, range::UnitRange{<:Integer})
+    deletechars(rope, range.start, 1 + range.stop - range.start)
 end
 
 function _cutstring(s::S, i::Integer) where {S<:AbstractString}
@@ -251,12 +264,11 @@ function Base.:(==)(a::RichRope, b::RichRope)
 end
 
 function Base.:(==)(a::RichRope, b::AbstractString)
-    a.sizeof != sizeof(b) && (#=println("$(a.sizeof) != $(sizeof(b))");=# return false)
+    a.sizeof != sizeof(b) && return false
 
     same = true
     for (c1, c2) in zip(a, b)
         if c1 != c2
-            println("! $c1, $c2")
             same = false
             break
         end
@@ -411,10 +423,7 @@ show_rope(io::IO, rope::RichRope{S,Nothing}) where {S} = print(io, escape_string
 
 # Metrics
 
-isleaf(a::RichRope{S}) where {S} = a.leaf != one(S)
-
-# isleaf(a::RichRope{S,Nothing}) where {S} = true
-# isleaf(a::RichRope{S,RichRope{S}}) where {S} = false
+isleaf(a::RichRope{S}) where {S} = a.left === nothing
 
 @inline
 function nthpoint(s::AbstractString, i::Integer)

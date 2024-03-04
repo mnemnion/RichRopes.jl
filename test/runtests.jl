@@ -37,6 +37,15 @@ import Unicode: graphemes
             @test codeunit(rope, i) == codeunit(ref, I)
         end
     end
+    @testset "getindex" begin
+        ref = "aδ∇🍆h"
+        w = length(ref)
+        rope = readinrope(ref^23, 31)
+        for i in eachindex(rope)
+            I = (i - 1) % w + 1
+            @test rope[i] == ref[nextind(ref, 0, I)]
+        end
+    end
     @testset "Concat / * / == " begin
         for i in 1:10
             ref = "aδ∇🍆h"^i
@@ -44,16 +53,16 @@ import Unicode: graphemes
            @test rope * rope == ref * ref
         end
     end
-    @testset "deletenchars" begin
+    @testset "deletechars" begin
         az = String(collect('a':'z'))
         ref = az^3
         rope = readinrope(ref, 11)
-        clip1 = deletenchars(rope, 1, 26)
+        clip1 = deletechars(rope, 1, 26)
         @test clip1 == az^2
-        clip2 = deletenchars(rope, 26, 26)
+        clip2 = deletechars(rope, 26, 26)
         @test clip2 == az^2
-        clip3 = deletenchars(rope, 52, 26)
+        clip3 = deletechars(rope, 52, 26)
         @test clip3 == az^2
-        @test_throws BoundsError deletenchars(rope, 52, 27)
+        @test_throws BoundsError deletechars(rope, 52, 27)
     end
 end
