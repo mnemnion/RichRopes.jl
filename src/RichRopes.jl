@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave, deletechars
+export RichRope, AbstractRope, readinrope, cleave, delete, splice
 
 import Unicode: graphemes
 
@@ -161,6 +161,7 @@ function stringtoleaf(s::S) where {S<:AbstractString}
     end
     RichRope(sizeof(s), 0, len, g, nl, s)
 end
+stringtoleaf(s::RichRope) = s
 
 function collectleaves(rope::RichRope{S,RichRope{S}},
                        leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
@@ -179,6 +180,11 @@ function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractSt
     return stringtoleaf(left), stringtoleaf(right)
 end
 
+"""
+    cleave(rope::RichRope, index::Integer)
+
+Return two ropes created by splitting `rope` at `index`.
+"""
 function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
     if index == 0
         return one(RichRope{S}), rope
@@ -195,34 +201,38 @@ function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
     end
 end
 
-function part(rope::RichRope{S}, index::Integer, n::Integer) where {S}
-    n == 0 && return rope, one(RichRope{S})
-    if !(0 < index ≤ rope.length)
-        throw(BoundsError(rope, index))
-    elseif index + n > rope.length
-        throw(BoundsError(rope, index + n))
-    end
-    left, right = cleave(rope, index)
-    if length(right) == n
-        return left, one(RichRope{S})
-    end
-    _, new_right = cleave(right, n)
-    println(left)
-    println(new_right)
-    return left, new_right
+"""
+    cleave(rope::RichRope, range::UnitRange{<:Integer})
+
+Return two ropes which are the head and tail of `rope` with `range`
+removed.
+"""
+function cleave(rope::RichRope, range::UnitRange{<:Integer})
+    @boundscheck 0 < range.start || throw(BoundsError(rope, range.start))
+    @boundscheck 0 ≤ range.stop ≤ length(rope) || throw(BoundsError(rope, range.stop))
+    head, rest = cleave(rope, range.start - 1)
+    _, tail = cleave(rest, 1 + range.stop - range.start)
+    return head, tail
 end
 
-function part(rope::RichRope, range::UnitRange{<:Integer})
-    part(rope, range.start, 1 + range.stop - range.start)
-end
+"""
+    delete(rope::RichRope, range::UnitRange{<:Integer})
 
-function deletechars(rope::RichRope, index::Integer, n::Integer)
-    left, right = part(rope, index, n)
+Return a rope with the characters in `range` deleted.
+"""
+function delete(rope::RichRope, range::UnitRange{<:Integer})
+    left, right = cleave(rope, range)
     return left * right
 end
 
-function deletechars(rope::RichRope, range::UnitRange{<:Integer})
-    deletechars(rope, range.start, 1 + range.stop - range.start)
+"""
+    delete(rope::RichRope, index::Integer, n::Integer)
+
+Return a rope with `n` characters removed, beginning with the character
+at `index`.
+"""
+function delete(rope::RichRope, index::Integer, n::Integer)
+    delete(rope, index:(index + n - 1))
 end
 
 function _cutstring(s::S, i::Integer) where {S<:AbstractString}
@@ -232,6 +242,27 @@ function _cutstring(s::S, i::Integer) where {S<:AbstractString}
     end
     r = nextind(s,l)
     return s[begin:l], s[r:end]
+end
+
+"""
+    splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::AbstractString)
+
+Return a new rope with `str` spliced into `rope`. If `at` is an `Integer`, the
+rope is split at `at`, if `at` is a range, that range is removed.
+
+# Example
+
+```jldoctest
+julia> String(splice(RichRope("aabbcc"), 3:4, "!!"))
+"aa!!cc"
+
+julia> String(splice(RichRope("aabbcc"), 3, "!!"))
+"aab!!bcc"
+```
+"""
+function splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::AbstractString)
+    left, right = cleave(rope, at)
+    return left * str * right
 end
 
 # Base methods
@@ -304,9 +335,9 @@ function Base.getindex(rope::RichRope{S,Nothing} where {S<:AbstractString}, inde
 end
 
 function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
-    _, left = cleave(rope, range.start)
-    right, _ = cleave(rope, range.stop)
-    return left * right
+    _, tail = cleave(rope, range.start - 1)
+    rest, _ = cleave(tail, 1 + range.stop - range.start)
+    return rest
 end
 
 Base.eachindex(rope::RichRope) = 1:rope.length

@@ -53,16 +53,15 @@ import Unicode: graphemes
            @test rope * rope == ref * ref
         end
     end
-    @testset "deletechars" begin
-        az = String(collect('a':'z'))
-        ref = az^3
-        rope = readinrope(ref, 11)
-        clip1 = deletechars(rope, 1, 26)
-        @test clip1 == az^2
-        clip2 = deletechars(rope, 26, 26)
-        @test clip2 == az^2
-        clip3 = deletechars(rope, 52, 26)
-        @test clip3 == az^2
-        @test_throws BoundsError deletechars(rope, 52, 27)
+    @testset "delete" begin
+        str = "a"^10 * "b"^10 * "c"^10
+        rope = readinrope(str, 9)
+        @test delete(rope, 1:10) == "b"^10 * "c"^10
+        @test delete(rope, 1, 10) == "b"^10 * "c"^10
+        @test delete(rope, 11:20) == "a"^10 * "c"^10
+        @test delete(rope, 21:30) == "a"^10 * "b"^10
+        @test delete(rope, 1:30) == ""
+        @test_throws BoundsError delete(rope, 0:30)
+        @test_throws BoundsError delete(rope, 1:31)
     end
 end
