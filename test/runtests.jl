@@ -64,4 +64,5 @@ import Unicode: graphemes
         @test_throws BoundsError delete(rope, 0:30)
         @test_throws BoundsError delete(rope, 1:31)
     end
+
 end

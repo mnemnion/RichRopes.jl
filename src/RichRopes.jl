@@ -294,7 +294,7 @@ function Base.:(==)(a::RichRope, b::RichRope)
     return same
 end
 
-function Base.:(==)(a::RichRope, b::AbstractString)
+function Base.:(==)(a::RichRope{S,RichRope{S}} where {S}, b::AbstractString)
     a.sizeof != sizeof(b) && return false
 
     same = true
@@ -306,6 +306,8 @@ function Base.:(==)(a::RichRope, b::AbstractString)
     end
     return same
 end
+
+Base.:(==)(a::RichRope{S,Nothing} where {S}, b::AbstractString) = a.leaf == b
 
 Base.:(==)(a::AbstractString, b::RichRope) = b == a
 
@@ -381,9 +383,7 @@ function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
     return r.leaf[1], (stack, 1)
 end
 
-Base.iterate(rope::RichRope{S,Nothing} where {S}) = iterate(rope.leaf)
-
-function Base.iterate(::RichRope{S}, state) where {S<:AbstractString}
+function Base.iterate(::RichRope{S}, state::Tuple) where {S<:AbstractString}
     stack, i = state
     if !isleaf(stack[end])
         while !isleaf(stack[end])
@@ -405,6 +405,17 @@ function Base.iterate(::RichRope{S}, state) where {S<:AbstractString}
             push!(stack, stack[end].left::RichRope)
         end
         return stack[end].leaf[1], (stack, 1)
+    end
+end
+
+Base.iterate(rope::RichRope{S,Nothing} where {S}) = rope.leaf[1], 1
+
+function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer)
+    idx = nextind(rope.leaf, i)
+    if idx > rope.sizeof
+        return nothing
+    else
+        return rope.leaf[idx], idx
     end
 end
 
