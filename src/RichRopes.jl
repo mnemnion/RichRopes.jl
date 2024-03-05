@@ -97,9 +97,11 @@ function readinrope(io::IO, leafsize=leaf_size[])
             remain = collect(codeunits(last))
             s = String(v)
         end
-        rope = RichRope(sizeof(s), 0, len, g, nl, s)
-
-        push!(leaves, rope)
+        # This can leave an empty string (think Zalgotext), which we don't need
+        if !isempty(s)
+            rope = RichRope(sizeof(s), 0, len, g, nl, s)
+            push!(leaves, rope)
+        end
     end
     if length(leaves) == 1
         return only(leaves)
@@ -521,8 +523,8 @@ function string_metrics(s::S) where {S<:AbstractString}
             len1 = 0
         end
     end
-    clip = nextind(s, prevind(s, sizeof(s) - len2 - malformed_end))
-    clip = clip == 0 ? 1 : clip
+    clip = prevind(s, sizeof(s) - len2 - malformed_end, 2)
+    clip = clip ≤ 0 ? 1 : clip
     last = @view s[clip:end]
     return len, g, nl, last, true, malformed_end != 0
 end
