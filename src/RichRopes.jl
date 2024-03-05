@@ -2,7 +2,7 @@ module RichRopes
 
 export RichRope, AbstractRope, readinrope, cleave, delete, splice
 
-import Unicode: graphemes
+import Base.Unicode: isgraphemebreak!, graphemes
 
 """
     AbstractRope <: AbstractString
@@ -13,7 +13,7 @@ abstract type AbstractRope{S<:AbstractString} <: AbstractString end
 
 #  Smaller than usual, four cache lines?
 #  Configurable in any case
-const LEAF_SIZE = 256
+const leaf_size = Ref(256)
 
 struct RichRope{S<:AbstractString, T<:Union{AbstractRope{S},Nothing}} <: AbstractRope{S}
     sizeof::Int     # In bytes / codeunits
@@ -64,7 +64,7 @@ end
 
 # Builder methods
 
-function readinrope(s::AbstractString, leafsize=LEAF_SIZE)
+function readinrope(s::AbstractString, leafsize=leaf_size[])
     if sizeof(s) < leafsize
         stringtoleaf(s)
     else
@@ -72,7 +72,7 @@ function readinrope(s::AbstractString, leafsize=LEAF_SIZE)
     end
 end
 
-function readinrope(io::IO, leafsize=LEAF_SIZE)
+function readinrope(io::IO, leafsize=leaf_size[])
     reading = true
     remain::Vector{UInt8} = UInt8[]
     leaves = RichRope{String,Nothing}[]
@@ -89,7 +89,7 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
         end
         if reading # There will always be a remainder, for grapheme integrity
             len -= length(last)
-            g -= 1
+            g -= length(graphemes(last))
             if last == "\n"
                 nl -= 1
             end
@@ -104,10 +104,10 @@ function readinrope(io::IO, leafsize=LEAF_SIZE)
     if length(leaves) == 1
         return only(leaves)
     end
-    return mergeleaves(leaves)
+    return mergeonread(leaves)
 end
 
-function mergeleaves(leaves::Vector{RichRope{S,Nothing}}) where {S}
+function mergeonread(leaves::Vector{RichRope{S,Nothing}}) where {S}
     tier = []
     # to get one-based line indexing, we handle the first two special-case.
     left, right = leaves[1], leaves[2]
@@ -117,6 +117,10 @@ function mergeleaves(leaves::Vector{RichRope{S,Nothing}}) where {S}
     nl = left.linenum + right.linenum + 1
     push!(tier, RichRope(size, 1, len, g, nl, one(S), left, right))
     leaves = @views leaves[3:end]
+    return mergeleaves(leaves, tier)
+end
+
+function mergeleaves(leaves, tier=[])
     crunching = true
     while crunching
         for i in 1:2:length(leaves)
@@ -155,8 +159,8 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
 end
 
 function stringtoleaf(s::S) where {S<:AbstractString}
-    len, g, nl, _, valid = string_metrics(s)
-    if !valid
+    len, g, nl, _, valid, bad_end = string_metrics(s)
+    if !valid || bad_end
         error("invalid UTF-8 at index $len")
     end
     RichRope(sizeof(s), 0, len, g, nl, s)
@@ -295,7 +299,7 @@ function Base.:(==)(a::RichRope{S,RichRope{S}}, b::RichRope{S}) where {S}
 end
 
 function Base.:(==)(a::RichRope{S,RichRope{S}}, b::R) where {S,R<:AbstractString}
-    sizeof(a) != sizeof(b) && return false
+    sizeof(a) != sizeof(b) || length(a) != length(b) && return false
 
     same = true
     for (c1, c2) in zip(a, b)
@@ -474,18 +478,24 @@ end
 
 function string_metrics(s::S) where {S<:AbstractString}
     if s == one(S)
-        return 0, 0, 0, 0, true
+        return 0, 0, 0, one(SubString{S}), true, false
+    end
+    if sizeof(s) == 1
+        nl = only(s) == '\n' ? 1 : 0
+        return 1, 1, nl, one(SubString{S}), true, false
     end
     nl, len = 0, 0
+    malformed_end = 0
     for (idx, char) in pairs(s)
         if isvalid(char)
             len += 1
         elseif idx + ncodeunits(char) != ncodeunits(s) + 1
             # These values are for reporting errors, note that
             # "length" is instead the index of the error
-            return idx, 0, nl, 0, false
+            return idx, 0, nl, 0, false, false
         else
             len += 1
+            malformed_end = ncodeunits(char)
         end
         if char === '\n'
             nl += 1
@@ -495,21 +505,26 @@ function string_metrics(s::S) where {S<:AbstractString}
     # To count graphemes correctly, we must always retain the last
     # grapheme for next time (until the end of the stream), because
     # in addition to malformed UTF-8 from clipping characters, we
-    # might be between graphemes. A string can be a megabyte and one
-    # grapheme, which we will handle correctly if inefficiently.
-    #
-    # TODO right now we care about correctness, but this allocates a bunch of SubStrings.
-    # we'll want to rewrite it to use the low-level functions.
-    # Note: this breaks long graphemes which it can't know about (because some are missing)
-    # into smaller graphemes, backtracking at the end of a string, so it needs rewriting
-    # using low-level grapheme break checks.
+    # might be between graphemes.
+    # TODO complete
     g = 0
-    last = nothing
-    for glyph in graphemes(s)
-        g += 1
-        last = glyph
+    state = Ref{Int32}(0)
+    len1, len2 = 0, 0
+    c0 = eltype(S)(0x00000000)
+    _idx = 0
+    for (idx, c) in pairs(s)
+        len1 += idx - _idx
+        _idx = idx
+        if isgraphemebreak!(state, c0, c)
+            g += 1
+            len2 = len1
+            len1 = 0
+        end
     end
-    return len, g, nl, last, true # end may be malformed but string itself is valid
+    clip = nextind(s, prevind(s, sizeof(s) - len2 - malformed_end))
+    clip = clip == 0 ? 1 : clip
+    last = @view s[clip:end]
+    return len, g, nl, last, true, malformed_end != 0
 end
 
 # Skipping the ones we don't use...
