@@ -1,11 +1,11 @@
 using RichRopes
 using Test
 using Aqua
-import Unicode: graphemes
+import Base.Unicode: graphemes
 
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-       # Aqua.test_all(RichRopes)
+        Aqua.test_all(RichRopes)
     end
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100

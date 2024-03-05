@@ -273,7 +273,7 @@ end
 
 # Base methods
 
-Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
+Base.:*(a::RichRope{S}, b::RichRope{R}) where {S,R} = concatenate(a, b)
 # Favor the concrete type of the Rope
 Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S, b)))
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S, a)), b)
