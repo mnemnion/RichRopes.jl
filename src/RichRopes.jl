@@ -269,8 +269,8 @@ end
 
 Base.:*(a::RichRope, b::RichRope) = concatenate(a, b)
 # Favor the concrete type of the Rope
-Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S,b)))
-Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S,a)), b)
+Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S, b)))
+Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S, a)), b)
 Base.one(::Type{RichRope{S}}) where {S} = stringtoleaf(one(S))
 
 function Base.:^(a::RichRope, b::Integer)
@@ -278,7 +278,7 @@ function Base.:^(a::RichRope, b::Integer)
     return mergeleaves(reps)
 end
 
-function Base.:(==)(a::RichRope, b::RichRope)
+function Base.:(==)(a::RichRope{S,RichRope{S}}, b::RichRope{S}) where {S}
     lmatch = a.grapheme != b.grapheme ? false :
              a.length != b.length ? false :
              a.sizeof != b.sizeof ? false : true
@@ -294,8 +294,8 @@ function Base.:(==)(a::RichRope, b::RichRope)
     return same
 end
 
-function Base.:(==)(a::RichRope{S,RichRope{S}} where {S}, b::AbstractString)
-    a.sizeof != sizeof(b) && return false
+function Base.:(==)(a::RichRope{S,RichRope{S}}, b::R) where {S,R<:AbstractString}
+    sizeof(a) != sizeof(b) && return false
 
     same = true
     for (c1, c2) in zip(a, b)
@@ -307,9 +307,9 @@ function Base.:(==)(a::RichRope{S,RichRope{S}} where {S}, b::AbstractString)
     return same
 end
 
-Base.:(==)(a::RichRope{S,Nothing} where {S}, b::AbstractString) = a.leaf == b
+Base.:(==)(a::RichRope{S,Nothing}, b::R) where {S,R<:AbstractString} = a.leaf == b
 
-Base.:(==)(a::AbstractString, b::RichRope) = b == a
+Base.:(==)(a::S, b::RichRope{S}) where {S} = b == a
 
 Base.ncodeunits(rope::RichRope) = rope.sizeof
 Base.sizeof(rope::RichRope) = rope.sizeof
@@ -369,7 +369,6 @@ function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
 end
 
 Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
-
 
 # TODO make a struct to implement the iterator interface
 function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
