@@ -83,16 +83,14 @@ function readinrope(io::IO, leafsize=leaf_size[])
         end
         v = vcat(remain, v1)
         s = String(copy(v))
-        len, g, nl, last, valid = string_metrics(s)
+        len, g, nl, last, valid, bad_end = string_metrics(s)
         if !valid
             error("Invalid UTF-8 on line $len")
         end
         if reading # There will always be a remainder, for grapheme integrity
             len -= length(last)
-            g -= length(graphemes(last))
-            if last == "\n"
-                nl -= 1
-            end
+            g -= bad_end ? 2 : 1
+            nl -= count('\n', last)
             resize!(v, length(v) - ncodeunits(last))
             remain = collect(codeunits(last))
             s = String(v)
@@ -487,7 +485,7 @@ function string_metrics(s::S) where {S<:AbstractString}
         return 1, 1, nl, one(SubString{S}), true, false
     end
     nl, len = 0, 0
-    malformed_end = 0
+    malformed_end = false
     for (idx, char) in pairs(s)
         if isvalid(char)
             len += 1
@@ -497,36 +495,37 @@ function string_metrics(s::S) where {S<:AbstractString}
             return idx, 0, nl, 0, false, false
         else
             len += 1
-            malformed_end = ncodeunits(char)
+            malformed_end = true
         end
         if char === '\n'
             nl += 1
         end
     end
-    # Graphemes
-    # To count graphemes correctly, we must always retain the last
-    # grapheme for next time (until the end of the stream), because
-    # in addition to malformed UTF-8 from clipping characters, we
-    # might be between graphemes.
-    # TODO complete
-    g = 0
-    state = Ref{Int32}(0)
-    len1, len2 = 0, 0
-    c0 = eltype(S)(0x00000000)
-    _idx = 0
-    for (idx, c) in pairs(s)
-        len1 += idx - _idx
-        _idx = idx
-        if isgraphemebreak!(state, c0, c)
-            g += 1
-            len2 = len1
-            len1 = 0
-        end
+    g, bad, good = grapheme_metrics(s)
+    if malformed_end
+        clip = bad
+    else
+        clip = good
     end
-    clip = prevind(s, sizeof(s) - len2 - malformed_end, 2)
-    clip = clip ≤ 0 ? 1 : clip
     last = @view s[clip:end]
-    return len, g, nl, last, true, malformed_end != 0
+    return len, g, nl, last, true, malformed_end
+end
+
+function grapheme_metrics(s::S) where {S<:AbstractString}
+    c0 = eltype(S)(0x00000000)
+    state = Ref{Int32}(0)
+    n = 0
+    pre = 0
+    now = 0
+    for (i, c) in pairs(s)
+        if isgraphemebreak!(state, c0, c)
+            n += 1
+            pre = now
+            now = i
+        end
+        c0 = c
+    end
+    return n, pre, now
 end
 
 # Skipping the ones we don't use...

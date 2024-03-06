@@ -28,6 +28,14 @@ import Base.Unicode: graphemes
             @test rope.grapheme == graph * i
         end
     end
+    @testset "Farmer Bob" begin
+        ref = "👨🏻‍🌾"^30
+        graphs = length(graphemes(ref))
+        split = rand(7:21)
+        println("splits at $split")
+        rope = readinrope(ref, split)
+        @test rope.grapheme == graphs
+    end
     @testset "Codeunits" begin
         ref = "aδ∇🍆h"
         w = ncodeunits(ref)
