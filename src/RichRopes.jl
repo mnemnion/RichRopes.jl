@@ -81,7 +81,7 @@ function readinrope(io::IO, leafsize=leaf_size[])
         if length(v1) < leafsize
             reading = false
         end
-        v = vcat(remain, v1)
+        v = append!(remain, v1)
         s = String(copy(v))
         len, g, nl, last, valid, bad_end = string_metrics(s)
         if !valid
@@ -180,6 +180,9 @@ end
 
 function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractString}
     @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, index))
+    if isascii(rope)
+        return stringtoleaf(rope.leaf[begin:index]), stringtoleaf(rope.leaf[index+1:end])
+    end
     left, right = @inbounds _cutstring(rope.leaf, index)::Tuple{S,S}
     return stringtoleaf(left), stringtoleaf(right)
 end
@@ -480,10 +483,6 @@ function string_metrics(s::S) where {S<:AbstractString}
     if s == one(S)
         return 0, 0, 0, one(SubString{S}), true, false
     end
-    if sizeof(s) == 1
-        nl = only(s) == '\n' ? 1 : 0
-        return 1, 1, nl, one(SubString{S}), true, false
-    end
     nl, len = 0, 0
     malformed_end = false
     for (idx, char) in pairs(s)
@@ -507,7 +506,7 @@ function string_metrics(s::S) where {S<:AbstractString}
     else
         clip = good
     end
-    last = @view s[clip:end]
+    last = clip == 0 ? s : @view s[clip:end]
     return len, g, nl, last, true, malformed_end
 end
 

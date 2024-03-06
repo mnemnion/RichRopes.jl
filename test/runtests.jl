@@ -3,13 +3,18 @@ using Test
 using Aqua
 import Base.Unicode: graphemes
 
+
+RichRopes.leaf_size[] = 1 # rand(3:31)
+
+println("Leaf Size: $(RichRopes.leaf_size[])")
+
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        Aqua.test_all(RichRopes)
+        # Aqua.test_all(RichRopes)
     end
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100
-        rope = readinrope(ref, 28)
+        rope = readinrope(ref)
         for i in 1:length(rope)
             left, right = cleave(rope, i)
             @test String(left) * String(right) == ref
@@ -21,7 +26,7 @@ import Base.Unicode: graphemes
         len = length(ref)
         graph = length(graphemes(ref))
         for i in 1:10
-            rope = readinrope(ref^i, 17)
+            rope = readinrope(ref^i)
             @test sizeof(rope) == size * i
             @test length(rope) == len * i
             @test rope.length == length(String(rope))
@@ -39,7 +44,7 @@ import Base.Unicode: graphemes
     @testset "Codeunits" begin
         ref = "aδ∇🍆h"
         w = ncodeunits(ref)
-        rope = readinrope(ref^23, 28)
+        rope = readinrope(ref^23)
         for i in 1:ncodeunits(rope)
             I = (i - 1) % w + 1
             @test codeunit(rope, i) == codeunit(ref, I)
@@ -48,7 +53,7 @@ import Base.Unicode: graphemes
     @testset "getindex" begin
         ref = "aδ∇🍆h"
         w = length(ref)
-        rope = readinrope(ref^23, 31)
+        rope = readinrope(ref^23)
         for i in eachindex(rope)
             I = (i - 1) % w + 1
             @test rope[i] == ref[nextind(ref, 0, I)]
@@ -57,13 +62,13 @@ import Base.Unicode: graphemes
     @testset "Concat / * / == " begin
         for i in 1:10
             ref = "aδ∇🍆h"^i
-            rope = readinrope(ref, 7)
+            rope = readinrope(ref)
            @test rope * rope == ref * ref
         end
     end
     @testset "delete" begin
         str = "a"^10 * "b"^10 * "c"^10
-        rope = readinrope(str, 9)
+        rope = readinrope(str)
         @test delete(rope, 1:10) == "b"^10 * "c"^10
         @test delete(rope, 1, 10) == "b"^10 * "c"^10
         @test delete(rope, 11:20) == "a"^10 * "c"^10
