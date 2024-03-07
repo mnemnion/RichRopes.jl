@@ -4,7 +4,7 @@ using Aqua
 import Base.Unicode: graphemes
 
 
-RichRopes.leaf_size[] = 1 # rand(3:31)
+RichRopes.leaf_size[] = rand(1:32)
 
 println("Leaf Size: $(RichRopes.leaf_size[])")
 
@@ -66,6 +66,17 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
            @test rope * rope == ref * ref
         end
     end
+
+    @testset "Equality" begin
+        ref = "abcδ👨🏻‍🌾e∇g🍆h"^rand(5:20)
+        rope = readinrope(ref)
+        @test rope == ref
+        @test rope != ref * "!"
+        r2 = readinrope(ref * "?")
+        @test rope != r2
+        r3 = readinrope(ref[1:prevind(ref, lastindex(ref))])
+        @test rope != r3
+    end
     @testset "delete" begin
         str = "a"^10 * "b"^10 * "c"^10
         rope = readinrope(str)
@@ -78,4 +89,9 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError delete(rope, 1:31)
     end
 
+    @testset "Basics" begin
+        @test one(RichRope{String}) == one(RichRope("")) == one(String) == ""
+        @test oneunit(RichRope{String}) == oneunit(RichRope("")) == oneunit(String) == ""
+        @test typemin(RichRope{String}) == typemin(RichRope("")) == typemin(String) == ""
+    end
 end

@@ -76,6 +76,7 @@ function readinrope(io::IO, leafsize=leaf_size[])
     reading = true
     remain::Vector{UInt8} = UInt8[]
     leaves = RichRope{String,Nothing}[]
+    first = true
     while reading
         v1 = read(io, leafsize)
         if length(v1) < leafsize
@@ -84,6 +85,10 @@ function readinrope(io::IO, leafsize=leaf_size[])
         v = append!(remain, v1)
         s = String(copy(v))
         len, g, nl, last, valid, bad_end = string_metrics(s)
+        if first
+            nl += 1
+            first = false
+        end
         if !valid
             error("Invalid UTF-8 on line $len")
         end
@@ -104,41 +109,18 @@ function readinrope(io::IO, leafsize=leaf_size[])
     if length(leaves) == 1
         return only(leaves)
     end
-    return mergeonread(leaves)
+    return mergeleaves(leaves)
 end
 
-function mergeonread(leaves::Vector{RichRope{S,Nothing}}) where {S}
-    tier = []
-    # to get one-based line indexing, we handle the first two special-case.
-    left, right = leaves[1], leaves[2]
-    size = left.sizeof + right.sizeof
-    len = left.length + right.length
-    g = left.grapheme + right.grapheme
-    nl = left.linenum + right.linenum + 1
-    push!(tier, RichRope(size, 1, len, g, nl, one(S), left, right))
-    leaves = @views leaves[3:end]
-    return mergeleaves(leaves, tier)
-end
-
-function mergeleaves(leaves, tier=[])
-    crunching = true
-    while crunching
-        for i in 1:2:length(leaves)
-            if i < length(leaves)
-                left, right = leaves[i], leaves[i+1]
-                push!(tier, concatenate(left, right))
-            else
-                push!(tier, leaves[end])
-            end
-        end
-        if length(tier) == 1
-            crunching = false
-        else
-            leaves = tier
-            tier = []
-        end
+function mergeleaves(leaves)
+    if length(leaves) == 1
+        return only(leaves)
+    elseif length(leaves) == 2
+        return leaves[1] * leaves[2]
+    else
+        mid = length(leaves) ÷ 2
+        return @views mergeleaves(leaves[begin:mid]) * mergeleaves(leaves[mid+1:end])
     end
-    return only(tier)
 end
 
 function concatenate(left::RichRope{S}, right::RichRope{S}) where {S}
@@ -158,6 +140,7 @@ function concatenate(left::RichRope{S}, right::RichRope{R}) where {S,R}
     concatenate(left, convert(RichRope{S}, right))
 end
 
+stringtoleaf(s::RichRope) = s
 function stringtoleaf(s::S) where {S<:AbstractString}
     len, g, nl, _, valid, bad_end = string_metrics(s)
     if !valid || bad_end
@@ -165,7 +148,6 @@ function stringtoleaf(s::S) where {S<:AbstractString}
     end
     RichRope(sizeof(s), 0, len, g, nl, s)
 end
-stringtoleaf(s::RichRope) = s
 
 function collectleaves(rope::RichRope{S,RichRope{S}},
                        leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
@@ -190,7 +172,8 @@ end
 """
     cleave(rope::RichRope, index::Integer)
 
-Return two ropes created by splitting `rope` at `index`.
+Return two ropes created by splitting `rope` at `index`, as indexed by
+codepoints.
 """
 function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
     if index == 0
@@ -212,7 +195,7 @@ end
     cleave(rope::RichRope, range::UnitRange{<:Integer})
 
 Return two ropes which are the head and tail of `rope` with `range`
-removed.
+removed.  Range is measured in codepoints.
 """
 function cleave(rope::RichRope, range::UnitRange{<:Integer})
     @boundscheck 0 < range.start || throw(BoundsError(rope, range.start))
@@ -278,7 +261,9 @@ Base.:*(a::RichRope{S}, b::RichRope{R}) where {S,R} = concatenate(a, b)
 # Favor the concrete type of the Rope
 Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S, b)))
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S, a)), b)
-Base.one(::Type{RichRope{S}}) where {S} = stringtoleaf(one(S))
+Base.one(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(one(S))
+Base.oneunit(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(one(S))
+Base.typemin(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(typemin(S))
 
 function Base.:^(a::RichRope, b::Integer)
     reps = [a for _ in 1:b]
@@ -291,32 +276,32 @@ function Base.:(==)(a::RichRope{S,RichRope{S}}, b::RichRope{S}) where {S}
              a.sizeof != b.sizeof ? false : true
     lmatch || return false
 
-    same = true
     for (c1, c2) in zip(a, b)
         if c1 != c2
-            same = false
-            break
+           return false
         end
     end
-    return same
+    return true
 end
 
 function Base.:(==)(a::RichRope{S,RichRope{S}}, b::R) where {S,R<:AbstractString}
-    sizeof(a) != sizeof(b) || length(a) != length(b) && return false
+    if sizeof(a) != sizeof(b) || length(a) != length(b)
+        return false
+    end
 
-    same = true
     for (c1, c2) in zip(a, b)
         if c1 != c2
-            same = false
-            break
+           return false
         end
     end
-    return same
+    return true
 end
+
+Base.:(==)(a::RichRope{S,Nothing}, b::RichRope{S,Nothing}) where {S} = a.leaf == b.leaf
 
 Base.:(==)(a::RichRope{S,Nothing}, b::R) where {S,R<:AbstractString} = a.leaf == b
 
-Base.:(==)(a::S, b::RichRope{S}) where {S} = b == a
+Base.:(==)(a::R, b::RichRope{S}) where {S,R<:AbstractString} = b == a
 
 Base.ncodeunits(rope::RichRope) = rope.sizeof
 Base.sizeof(rope::RichRope) = rope.sizeof
@@ -477,6 +462,39 @@ isleaf(a::RichRope{S}) where {S} = a.left === nothing
 function nthpoint(s::AbstractString, i::Integer)
     @boundscheck i > length(s) && throw(BoundsError("index out of bounds"))
     @inbounds nextind(s, 0, i)
+end
+
+function nthgrapheme(s::S, i::Integer) where {S<:AbstractString}
+    c0 = eltype(S)(0x00000000)
+    state = Ref{Int32}(0)
+    n = 0
+    i0 = 0
+    for (idx, c) in pairs(s)
+        if isgraphemebreak!(state, c0, c)
+            n += 1
+            if n == i
+                i0 = idx
+            elseif i0 > 0
+                return @view s[i0:prevind(s,idx)]
+            end
+        end
+        c0 = c
+    end
+    error(lazy"Can't return grapheme $i of $(length(graphemes(s)))-grapheme string")
+end
+
+function nthgraphemeindex(s::S, i::Integer) where {S<:AbstractString}
+    c0 = eltype(S)(0x00000000)
+    state = Ref{Int32}(0)
+    n = 0
+    for (idx, c) in pairs(s)
+        if isgraphemebreak!(state, c0, c)
+            n += 1
+            n == i && return idx
+        end
+        c0 = c
+    end
+    error(lazy"No index for grapheme $i in $(length(graphemes(s)))-grapheme string")
 end
 
 function string_metrics(s::S) where {S<:AbstractString}
