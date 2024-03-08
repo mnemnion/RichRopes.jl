@@ -2,7 +2,11 @@ module RichRopes
 
 export RichRope, AbstractRope, readinrope, cleave, delete, splice
 
-import Base.Unicode: isgraphemebreak!, graphemes
+import AbstractTrees: HasNodeType, NodeType, children, childrentype,
+                      nodevalue, print_tree, printnode, ischild
+import Base.Unicode: graphemes, isgraphemebreak!
+
+
 
 """
     AbstractRope <: AbstractString
@@ -254,6 +258,29 @@ function splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::Ab
     left, right = cleave(rope, at)
     return left * str * right
 end
+
+# AbstractTrees interface
+
+children(rope::RichRope{S,RichRope{S}} where {S}) = rope.left, rope.right
+childrentype(::Type{RichRope{S}}) where {S} = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
+ischild(r1::RichRope, r2::RichRope{S,RichRope{S}} where {S}) = r2.left ≡ r1 || r2.right ≡ r1
+ischild(r1::RichRope, r2::RichRope{S,Nothing} where {S}) = false
+NodeType(::Type{RichRope}) = HasNodeType()
+print_tree(rope::RichRope) = print_tree(rope, maxdepth=rope.depth)
+
+function printnode(io::IO, rope::RichRope{S,RichRope{S}} where {S})
+    str = ""
+    if rope.length != rope.sizeof
+        str *= "sizeof: $(rope.sizeof) length: $(rope.length)"
+    else
+        str *= "length: $(rope.length)"
+    end
+    if rope.length != rope.grapheme
+        str *= " graphemes: $(rope.grapheme)"
+    end
+    printstyled(io, str, " lines: $(rope.linenum)", color=:light_black)
+end
+
 
 # Base methods
 
