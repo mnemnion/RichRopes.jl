@@ -88,6 +88,47 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError delete(rope, 0:30)
         @test_throws BoundsError delete(rope, 1:31)
     end
+    @testset "delete tests GPT edition" begin
+        # Test for correct deletion
+        let original_rope = RichRope("Hello World"), range = 7:11
+            expected_output = RichRope("Hello ")
+            @test delete(original_rope, range) == expected_output
+        end
+
+        # Test for empty range
+        let original_rope = RichRope("Hello World"), range = 7:6
+            expected_output = original_rope
+            @test delete(original_rope, range) == expected_output
+        end
+
+        # Test for range out of bounds
+        let original_rope = RichRope("Hello World"), range = 1:12
+            @test_throws BoundsError delete(original_rope, range)
+        end
+
+        # Test for invalid range type
+        let original_rope = RichRope("Hello World"), range = 5.0:10.0
+            @test_throws MethodError delete(original_rope, range)
+        end
+
+        # Test for deletion at the beginning of the rope
+        let original_rope = RichRope("Hello World"), range = 1:5
+            expected_output = RichRope(" World")
+            @test delete(original_rope, range) == expected_output
+        end
+
+        # Test for deletion at the end of the rope
+        let original_rope = RichRope("Hello World"), range = 7:11
+            expected_output = RichRope("Hello ")
+            @test delete(original_rope, range) == expected_output
+        end
+
+        # Test for deletion of a single character
+        let original_rope = RichRope("Hello World"), range = 6:6
+            expected_output = RichRope("HelloWorld")
+            @test delete(original_rope, range) == expected_output
+        end
+    end
 
     @testset "Basics" begin
         @test one(RichRope{String}) == one(RichRope("")) == one(String) == ""

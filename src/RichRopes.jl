@@ -162,10 +162,16 @@ end
 function collectleaves(rope::RichRope{S,Nothing}, leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
     push!(leaves,rope)
 end
+
 # Interface
 
 function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractString}
-    @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, index))
+    @boundscheck 0 ≤ index ≤ length(rope) || throw(BoundsError(rope, index))
+    if index == 0
+        return one(RichRope{S}), rope
+    elseif index == length(rope)
+        return rope, one(RichRope{S})
+    end
     if isascii(rope)
         return stringtoleaf(rope.leaf[begin:index]), stringtoleaf(rope.leaf[index+1:end])
     end
@@ -215,6 +221,7 @@ end
 Return a rope with the characters in `range` deleted.
 """
 function delete(rope::RichRope, range::UnitRange{<:Integer})
+    range.stop < range.start && return rope
     left, right = cleave(rope, range)
     return left * right
 end
@@ -509,6 +516,7 @@ function nthgrapheme(s::S, i::Integer) where {S<:AbstractString}
     end
     error(lazy"Can't return grapheme $i of $(length(graphemes(s)))-grapheme string")
 end
+
 
 function nthgraphemeindex(s::S, i::Integer) where {S<:AbstractString}
     c0 = eltype(S)(0x00000000)
