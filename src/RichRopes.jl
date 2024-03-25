@@ -94,7 +94,7 @@ function readinrope(io::IO, leafsize=leaf_size[])
             first = false
         end
         if !valid
-            error("Invalid UTF-8 on line $len")
+            error("invalid UTF-8 on line $nl")
         end
         if reading # There will always be a remainder, for grapheme integrity
             len -= length(last)

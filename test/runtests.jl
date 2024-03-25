@@ -17,7 +17,8 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         buf = IOBuffer("rope a dope dope")
         @test readinrope(buf) == "rope a dope dope"
         buf = IOBuffer("invalid \xff\xff")
-        @test_throws ErrorException readinrope(buf)
+        @test_throws "invalid UTF-8" readinrope(buf)
+        @test_throws "invalid UTF-8" stringtoleaf("invalid \xff\xff")
         buf = IOBuffer("rope a dope dope")
         @test readinrope(buf, 69) == "rope a dope dope"
         buf = IOBuffer("rope a dope dope")
@@ -33,6 +34,20 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             left, right = cleave(rope, i)
             @test String(left) * String(right) == ref
         end
+        @test cleave(rope, 0) == ("", rope)
+        @test cleave(rope, length(rope)) == (rope, "")
+        r2 = stringtoleaf("abcdefghijklmnopqrstuvwxyz")
+        for i in 1:length(r2)
+            left, right = cleave(r2, i)
+            @test String(left) * String(right) == r2
+        end
+    end
+    @testset "Splice" begin
+        sample = "aaaaaaaaaa"
+        ref = sample^30
+        rope = readinrope(ref)
+        @test (splice(rope, 4:5, "b") == rope) == false
+        @test splice(rope, 1:length(sample), "b"^length(sample)) == "b"^length(sample) * sample^29
     end
     @testset "Metrics" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"
@@ -160,5 +175,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test one(RichRope{String}) == one(RichRope("")) == one(String) == ""
         @test oneunit(RichRope{String}) == oneunit(RichRope("")) == oneunit(String) == ""
         @test typemin(RichRope{String}) == typemin(RichRope("")) == typemin(String) == ""
+        @test eltype(RichRope("")) == Char
+        @test eltype(RichRope(@view "abc"[1:3])) == Char
     end
 end
