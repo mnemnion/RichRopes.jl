@@ -20,6 +20,11 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws ErrorException readinrope(buf)
         buf = IOBuffer("rope a dope dope")
         @test readinrope(buf, 69) == "rope a dope dope"
+        buf = IOBuffer("rope a dope dope")
+        @test RichRope(buf) == "rope a dope dope"
+        rope = RichRope("rope a dope dope")
+        @test stringtoleaf(rope) === rope
+        @test readinrope(rope) === rope
     end
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100
@@ -67,15 +72,20 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             I = (i - 1) % w + 1
             @test rope[i] == ref[nextind(ref, 0, I)]
         end
+        @test rope[1:w] == ref
+        @test rope[1:5w] == ref^5
     end
     @testset "Concat / * / == / ^ " begin
         for i in 1:10
             ref = "aδ∇🍆h"^i
             rope = readinrope(ref)
            @test rope * rope == ref * ref
+           @test rope * ref == ref * rope
         end
         ss = stringtoleaf(@view "abcdef"[1:6])
         st = stringtoleaf("abcdef")
+        @test (st * "!" == ss) == false
+        @test (st == "abdcef") == false
         @test ss * st == "abcdefabcdef"
         @test ss * st isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test st * ss == "abcdefabcdef"

@@ -116,6 +116,8 @@ function readinrope(io::IO, leafsize=leaf_size[])
     return mergeleaves(leaves)
 end
 
+readinrope(rope::RichRope) = rope
+
 function mergeleaves(leaves)
     if length(leaves) == 1
         return only(leaves)
