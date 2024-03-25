@@ -368,6 +368,14 @@ function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
     return rest
 end
 
+function Base.view(rope::RichRope{S,RichRope{S}}, range::UnitRange{<:Integer}) where {S}
+    getindex(rope, range)
+end
+
+function Base.view(rope::RichRope{S,Nothing}, range::UnitRange{<:Integer}) where {S}
+    RichRope(SubString(rope, range))
+end
+
 Base.eachindex(rope::RichRope) = 1:rope.length
 
 function Base.codeunit(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
