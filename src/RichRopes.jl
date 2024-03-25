@@ -394,7 +394,7 @@ Base.lastindex(rope::RichRope) = rope.length
 
 # We always check validity building a string
 Base.isvalid(::RichRope) = true
-Base.isvalid(::RichRope, ::Integer) = true
+Base.isvalid(rope::RichRope, i::Integer) = 0 < i ≤ rope.length
 Base.isascii(rope::RichRope) = rope.sizeof == rope.length
 
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)

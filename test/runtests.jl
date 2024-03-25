@@ -37,7 +37,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test cleave(rope, 0) == ("", rope)
         @test cleave(rope, length(rope)) == (rope, "")
         r2 = stringtoleaf("abcdefghijklmnopqrstuvwxyz")
-        for i in 1:length(r2)
+        for i in 0:length(r2)
             left, right = cleave(r2, i)
             @test String(left) * String(right) == r2
         end
@@ -46,8 +46,11 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         sample = "aaaaaaaaaa"
         ref = sample^30
         rope = readinrope(ref)
-        @test (splice(rope, 4:5, "b") == rope) == false
+        @test ((splice(rope, 4:4, "b") == rope)) == false
+        @test ((splice(rope, 4:4, "b") == ref)) == false
+        @test length(splice(rope, 4:4, "b")) == length(rope)
         @test splice(rope, 1:length(sample), "b"^length(sample)) == "b"^length(sample) * sample^29
+        @test rope[1:51] == @views rope[1:51]
     end
     @testset "Metrics" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"
@@ -177,5 +180,11 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test typemin(RichRope{String}) == typemin(RichRope("")) == typemin(String) == ""
         @test eltype(RichRope("")) == Char
         @test eltype(RichRope(@view "abc"[1:3])) == Char
+        @test firstindex(RichRope("abcd")) == 1
+        @test lastindex(RichRope("abcd")) == 4
+        @test isvalid(RichRope("")) == true  # always true, otherwise constructor fails
+        @test isvalid(RichRope("ααββ"), 2) == true # all in-bounds indices are valid
+        @test isvalid(RichRope("a"), 5) == false
+        @test isvalid(RichRope("a"), 0) == false
     end
 end
