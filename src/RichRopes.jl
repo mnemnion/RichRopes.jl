@@ -344,7 +344,7 @@ function Base.collect(rope::RichRope)
     for c in rope
         push!(chars, c)
     end
-    chars
+    return chars
 end
 
 function Base.getindex(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)

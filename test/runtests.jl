@@ -1,5 +1,5 @@
 using RichRopes
-import RichRopes: stringtoleaf, collectleaves, nthgrapheme, nthgraphemeindex
+import RichRopes: stringtoleaf, collectleaves, nthgrapheme, nthgraphemeindex, mergeleaves
 using Test
 using Aqua
 import Base.Unicode: graphemes
@@ -133,6 +133,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test rope != r3
         r4 = stringtoleaf(r3* "!")
         @test (rope == r4) == false
+        @test (rope * "b" * rope == ref * "c" * ref) == false
     end
 
     @testset "delete" begin
@@ -200,6 +201,9 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 
     @testset "Iteration" begin
         @test collect("abcdefg") == collect(readinrope("abcdefg", 4))
+        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
+        rope = readinrope(ref)
+        @test mergeleaves(collectleaves(rope)) == rope
     end
 
     @testset "Graphemes" begin
