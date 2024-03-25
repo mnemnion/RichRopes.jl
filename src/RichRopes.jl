@@ -373,7 +373,7 @@ function Base.view(rope::RichRope{S,RichRope{S}}, range::UnitRange{<:Integer}) w
 end
 
 function Base.view(rope::RichRope{S,Nothing}, range::UnitRange{<:Integer}) where {S}
-    RichRope(SubString(rope, range))
+    RichRope(SubString{S}(rope.leaf, range.start, range.stop))
 end
 
 Base.eachindex(rope::RichRope) = 1:rope.length

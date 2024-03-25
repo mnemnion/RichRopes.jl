@@ -1,5 +1,5 @@
 using RichRopes
-import RichRopes: stringtoleaf, collectleaves
+import RichRopes: stringtoleaf, collectleaves, nthgrapheme, nthgraphemeindex
 using Test
 using Aqua
 import Base.Unicode: graphemes
@@ -51,6 +51,8 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test length(splice(rope, 4:4, "b")) == length(rope)
         @test splice(rope, 1:length(sample), "b"^length(sample)) == "b"^length(sample) * sample^29
         @test rope[1:51] == @views rope[1:51]
+        r2 = stringtoleaf(sample)
+        @test r2[1:5] == @views r2[1:5]
     end
     @testset "Metrics" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"
@@ -104,6 +106,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         st = stringtoleaf("abcdef")
         @test (st * "!" == ss) == false
         @test (st == "abdcef") == false
+        @test (st == stringtoleaf("abdcef")) == false
         @test ss * st == "abcdefabcdef"
         @test ss * st isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test st * ss == "abcdefabcdef"
@@ -120,6 +123,8 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test rope != r2
         r3 = readinrope(ref[1:prevind(ref, lastindex(ref))])
         @test rope != r3
+        r4 = stringtoleaf(r3* "!")
+        @test (rope == r4) == false
     end
     @testset "delete" begin
         str = "a"^10 * "b"^10 * "c"^10
@@ -173,6 +178,23 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test delete(original_rope, range) == expected_output
         end
     end
+    @testset "Reprs" begin
+        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^20
+        rope = readinrope(ref, 9)
+        @test repr("text/plain", rope) == "RichRope{String, RichRope{String}}\n   codeunits: 620\n   length: 280\n   graphemes: 220\n   lines: 21\n   max depth: 6\n"
+        io = IOBuffer()
+        show(io, ref)
+        @test String(take!(io)) == "\"abcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆h\""
+    end
+
+    @testset "Graphemes" begin
+        ref = "👨🏻‍🌾"^30
+        @test nthgrapheme(ref, 5) == "👨🏻‍🌾"
+        @test nthgraphemeindex(ref, 5) ==  61
+        @test_throws "Can't return grapheme" nthgrapheme(ref, 45)
+        @test_throws "No index for grapheme" nthgraphemeindex(ref, 40)
+
+    end
 
     @testset "Basics" begin
         @test one(RichRope{String}) == one(RichRope("")) == one(String) == ""
@@ -180,11 +202,13 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test typemin(RichRope{String}) == typemin(RichRope("")) == typemin(String) == ""
         @test eltype(RichRope("")) == Char
         @test eltype(RichRope(@view "abc"[1:3])) == Char
+        @test eltype(RichRope{SubString}) == Char
         @test firstindex(RichRope("abcd")) == 1
         @test lastindex(RichRope("abcd")) == 4
         @test isvalid(RichRope("")) == true  # always true, otherwise constructor fails
         @test isvalid(RichRope("ααββ"), 2) == true # all in-bounds indices are valid
         @test isvalid(RichRope("a"), 5) == false
         @test isvalid(RichRope("a"), 0) == false
+        @test convert(String, stringtoleaf("abcd")) isa String
     end
 end
