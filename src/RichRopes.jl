@@ -240,10 +240,7 @@ end
 
 function _cutstring(s::S, i::Integer) where {S<:AbstractString}
     l = nthpoint(s, i)  # Checks bounds
-    if l ≥ sizeof(s)
-        return s, one(S)
-    end
-    r = nextind(s,l)
+    r = nextind(s, l)
     return s[begin:l], s[r:end]
 end
 
@@ -418,12 +415,6 @@ end
 
 function Base.iterate(::RichRope{S}, state::Tuple) where {S<:AbstractString}
     stack, i = state
-    if !isleaf(stack[end])
-        while !isleaf(stack[end])
-            push!(stack, stack[end].left::RichRope{S})
-        end
-        return stack[end].leaf[1], (stack, 1)
-    end
     ind = nextind(stack[end].leaf, i)
     if ind ≤ stack[end].sizeof
         return stack[end].leaf[ind], (stack, ind)

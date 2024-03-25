@@ -13,6 +13,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
     @testset "Code quality (Aqua.jl)" begin
         # Aqua.test_all(RichRopes)
     end
+
     @testset "Reading" begin
         buf = IOBuffer("rope a dope dope")
         @test readinrope(buf) == "rope a dope dope"
@@ -27,6 +28,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test stringtoleaf(rope) === rope
         @test readinrope(rope) === rope
     end
+
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100
         rope = readinrope(ref)
@@ -42,6 +44,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test String(left) * String(right) == r2
         end
     end
+
     @testset "Splice" begin
         sample = "aaaaaaaaaa"
         ref = sample^30
@@ -54,6 +57,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         r2 = stringtoleaf(sample)
         @test r2[1:5] == @views r2[1:5]
     end
+
     @testset "Metrics" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"
         size = sizeof(ref)
@@ -67,6 +71,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test rope.grapheme == graph * i
         end
     end
+
     @testset "Farmer Bob" begin
         ref = "👨🏻‍🌾"^30
         graphs = length(graphemes(ref))
@@ -75,6 +80,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         rope = readinrope(ref, split)
         @test rope.grapheme == graphs
     end
+
     @testset "Codeunits" begin
         ref = "aδ∇🍆h"
         w = ncodeunits(ref)
@@ -84,6 +90,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test codeunit(rope, i) == codeunit(ref, I)
         end
     end
+
     @testset "getindex" begin
         ref = "aδ∇🍆h"
         w = length(ref)
@@ -95,6 +102,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test rope[1:w] == ref
         @test rope[1:5w] == ref^5
     end
+
     @testset "Concat / * / == / ^ " begin
         for i in 1:10
             ref = "aδ∇🍆h"^i
@@ -126,6 +134,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         r4 = stringtoleaf(r3* "!")
         @test (rope == r4) == false
     end
+
     @testset "delete" begin
         str = "a"^10 * "b"^10 * "c"^10
         rope = readinrope(str)
@@ -137,6 +146,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError delete(rope, 0:30)
         @test_throws BoundsError delete(rope, 1:31)
     end
+
     @testset "delete tests GPT edition" begin
         # Test for correct deletion
         let original_rope = RichRope("Hello World"), range = 7:11
@@ -183,8 +193,13 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         rope = readinrope(ref, 9)
         @test repr("text/plain", rope) == "RichRope{String, RichRope{String}}\n   codeunits: 620\n   length: 280\n   graphemes: 220\n   lines: 21\n   max depth: 6\n"
         io = IOBuffer()
-        show(io, ref)
+        @test show(io, ref) === nothing
         @test String(take!(io)) == "\"abcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆h\""
+        @test repr("text/plain", stringtoleaf("text/plain")) == "RichRope{String, Nothing} (leaf) \"text/plain\"\n"
+    end
+
+    @testset "Iteration" begin
+        @test collect("abcdefg") == collect(readinrope("abcdefg", 4))
     end
 
     @testset "Graphemes" begin
