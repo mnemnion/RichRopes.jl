@@ -1,4 +1,5 @@
 using RichRopes
+import RichRopes: stringtoleaf, collectleaves
 using Test
 using Aqua
 import Base.Unicode: graphemes
@@ -11,6 +12,14 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
         # Aqua.test_all(RichRopes)
+    end
+    @testset "Reading" begin
+        buf = IOBuffer("rope a dope dope")
+        @test readinrope(buf) == "rope a dope dope"
+        buf = IOBuffer("invalid \xff\xff")
+        @test_throws ErrorException readinrope(buf)
+        buf = IOBuffer("rope a dope dope")
+        @test readinrope(buf, 69) == "rope a dope dope"
     end
     @testset "Cleave" begin
         ref = "abc👨🏻‍🌾δe∇g🍆h"^100
@@ -59,12 +68,19 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test rope[i] == ref[nextind(ref, 0, I)]
         end
     end
-    @testset "Concat / * / == " begin
+    @testset "Concat / * / == / ^ " begin
         for i in 1:10
             ref = "aδ∇🍆h"^i
             rope = readinrope(ref)
            @test rope * rope == ref * ref
         end
+        ss = stringtoleaf(@view "abcdef"[1:6])
+        st = stringtoleaf("abcdef")
+        @test ss * st == "abcdefabcdef"
+        @test ss * st isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test st * ss == "abcdefabcdef"
+        @test st * ss isa RichRope{String, RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}}
+        @test st ^ 6 == "abcdefabcdefabcdefabcdefabcdefabcdef"
     end
 
     @testset "Equality" begin

@@ -335,8 +335,6 @@ Base.:(==)(a::RichRope{S,Nothing}, b::RichRope{S,Nothing}) where {S} = a.leaf ==
 
 Base.:(==)(a::RichRope{S,Nothing}, b::R) where {S,R<:AbstractString} = a.leaf == b
 
-Base.:(==)(a::R, b::RichRope{S}) where {S,R<:AbstractString} = b == a
-
 Base.ncodeunits(rope::RichRope) = rope.sizeof
 Base.sizeof(rope::RichRope) = rope.sizeof
 Base.length(rope::RichRope) = rope.length
@@ -441,7 +439,7 @@ function Base.iterate(::RichRope{S}, state::Tuple) where {S<:AbstractString}
     end
 end
 
-Base.iterate(rope::RichRope{S,Nothing} where {S}) = rope.leaf[1], 1
+Base.iterate(rope::RichRope{S,Nothing} where {S}) = isempty(rope.leaf) ? nothing : rope.leaf[1], 1
 
 function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer)
     idx = nextind(rope.leaf, i)
