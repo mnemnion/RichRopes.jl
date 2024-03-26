@@ -290,14 +290,17 @@ end
 
 # Base methods
 
+const ConcatFollow = Vararg{Union{AbstractChar,AbstractString,RichRope}}
+
 Base.:*(a::RichRope{S}, b::RichRope{R}) where {S,R} = concatenate(a, b)
+Base.:*(a::RichRope{S}, b::RichRope{R}, c::ConcatFollow) where {S,R} = *(a * b, c...)
 # Favor the concrete type of the Rope
 Base.:*(a::RichRope{S}, b::AbstractString) where {S} = concatenate(a, RichRope(convert(S, b)))
 Base.:*(a::RichRope{S}, b::AbstractChar) where {S} = concatenate(a, RichRope(convert(S, string(b))))
 Base.:*(a::AbstractString, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S, a)), b)
 Base.:*(a::AbstractChar, b::RichRope{S}) where {S} = concatenate(RichRope(convert(S, string(a))), b)
-Base.:*(a::RichRope{S}, b::Union{AbstractChar,AbstractString}, c::Vararg{Union{AbstractChar,AbstractString}}) where {S} = *(a * b, c...)
-Base.:*(a::Union{AbstractChar,AbstractString}, b::RichRope{S}, c::Vararg{Union{AbstractChar,AbstractString}}) where {S} = *(a * b, c...)
+Base.:*(a::RichRope{S}, b::Union{AbstractChar,AbstractString}, c::ConcatFollow) where {S} = *(a * b, c...)
+Base.:*(a::Union{AbstractChar,AbstractString}, b::RichRope{S}, c::ConcatFollow) where {S} = *(a * b, c...)
 Base.one(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(one(S))
 Base.oneunit(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(one(S))
 Base.typemin(::Union{RichRope{S},Type{RichRope{S}}}) where {S} = stringtoleaf(typemin(S))

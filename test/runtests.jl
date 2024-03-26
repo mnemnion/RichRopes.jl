@@ -118,6 +118,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test ss * 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test 'a' * ss * 'a' * "a" isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test "a" * ss * 'a' * 'a' * ss * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test (st * "!" == ss) == false
         @test (st == "abdcef") == false
         @test (st == stringtoleaf("abdcef")) == false
