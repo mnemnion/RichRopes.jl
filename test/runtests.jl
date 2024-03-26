@@ -230,6 +230,9 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         compacted = compactleaves!(leafvec, 9)
         @test RichRopes.mergeleaves(compactleaves!(leafvec, 9)) == "abcd" ^ 41
         @test compacted isa Vector{RichRope{String, Nothing}}
+        rope = readinrope("abcδ👨🏻‍🌾e\n∇g🍆h"^50)
+        catrope = rope * "lorem" * "ipsum" * rope * "dolor" * "s" * "i" * "t"
+        @test rebuild(catrope) == catrope
     end
 
     @testset "AbstractTrees" begin

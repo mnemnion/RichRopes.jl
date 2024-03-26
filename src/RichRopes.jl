@@ -1,10 +1,12 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave, delete, splice
+export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild
 
-import AbstractTrees: HasNodeType, NodeType, children, childtype,
-                      nodevalue, print_tree, printnode, ischild
+import AbstractTrees:
+    HasNodeType, NodeType, children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: graphemes, isgraphemebreak!
+
+
 
 
 
@@ -165,6 +167,19 @@ function collectleaves(rope::RichRope{S,Nothing}, leaves::Vector{RichRope{S,Noth
     push!(leaves,rope)
 end
 
+"""
+    compactleaves!(leaves::Vector{RichRope{<:AbstractString,Nothing}}, leafsize=leaf_size[])
+
+Compact a `Vector` of `RichRope` leaves, such that the returned Vector contains
+leaves of approximately `leafsize`.
+
+Note: this will never make a leaf smaller through splitting, so it cannot be used to
+reduce the leaf size of a `RichRope`.  Presuming that the rope was created originally
+of `leaf_size[]` leaves, the leaves resulting from `compactleaves!` will never be
+larger than 1.75X `leaf_size[]`.
+
+This is called by [rebuild](@ref).
+"""
 function compactleaves!(leaves::Vector{RichRope{S,Nothing}}, ls::Integer=leaf_size[]) where {S<:AbstractString}
     maxleaf = ls + (ls ÷ 4)
     minleaf = ls - (ls ÷ 4)
@@ -188,6 +203,19 @@ function compactleaves!(leaves::Vector{RichRope{S,Nothing}}, ls::Integer=leaf_si
     end
     return leaves
 end
+
+"""
+    rebuild(rope::RichRope{S,RichRope{S}} where {S}, leafsize::Integer=leaf_size[])
+
+Rebuild a `RichRope`.  This will compact adjacent small leaves into correctly-sized
+ones, and balance the tree.  Note that a value of `leafsize` smaller than that used
+to create the rope will not result in any leaf nodes being split, but will affect the
+target length of leaves which are compacted (see [compact](@ref)).
+"""
+function rebuild(rope::RichRope{S,RichRope{S}} where {S}, leafsize::Integer=leaf_size[])
+    compactleaves!(collectleaves(rope), leafsize) |> mergeleaves
+end
+rebuild(rope::RichRope{<:AbstractString,Nothing}, ::Integer=0) = rope
 
 # Interface
 
