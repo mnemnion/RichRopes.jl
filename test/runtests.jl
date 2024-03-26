@@ -130,6 +130,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test st * ss isa RichRope{String}
         @test st ^ 6 == "abcdefabcdefabcdefabcdefabcdefabcdef"
     end
+
     @testset "Equality" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"^rand(5:20)
         rope = readinrope(ref)
@@ -223,7 +224,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
     end
 
     @testset "AbstractTrees" begin
-        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
+        ref = "abc"^60 * "abcδ👨🏻‍🌾e\n∇g🍆h"^100
         rope = readinrope(ref)
         @test children(rope) == (rope.left, rope.right)
         @test childtype(typeof(rope)) == RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}
