@@ -469,9 +469,6 @@ mutable struct RichRopeCharIterator{S<:AbstractString}
     count::Int
 end
 
-Base.IteratorSize(::Type{RichRope}) = Base.HasLength()
-Base.IteratorEltype(::Type{RichRope})  = Base.HasEltype()
-
 function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
     iter = RichRopeCharIterator(RichRope{S}[rope], 1)
     r = rope.left::RichRope{S}

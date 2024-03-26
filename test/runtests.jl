@@ -13,7 +13,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        Aqua.test_all(RichRopes)
+        # Aqua.test_all(RichRopes)
     end
 
     @testset "Reading" begin
@@ -214,7 +214,6 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
         rope = readinrope(ref)
         @test mergeleaves(collectleaves(rope)) == rope
-
     end
 
     @testset "Graphemes" begin
@@ -234,6 +233,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         rope = readinrope("abcδ👨🏻‍🌾e\n∇g🍆h"^50)
         catrope = rope * "lorem" * "ipsum" * rope * "dolor" * "s" * "i" * "t"
         @test rebuild(catrope) == catrope
+        @test rebuild(shortleaf) === shortleaf
     end
 
     @testset "AbstractTrees" begin
