@@ -68,7 +68,7 @@ end
 
 # Builder methods
 
-function readinrope(s::AbstractString, leafsize=leaf_size[])
+function readinrope(s::AbstractString, leafsize::Integer=leaf_size[])
     if sizeof(s) < leafsize
         stringtoleaf(s)
     else
@@ -76,7 +76,7 @@ function readinrope(s::AbstractString, leafsize=leaf_size[])
     end
 end
 
-function readinrope(io::IO, leafsize=leaf_size[])
+function readinrope(io::IO, leafsize::Integer=leaf_size[])
     reading = true
     remain::Vector{UInt8} = UInt8[]
     leaves = RichRope{String,Nothing}[]
@@ -163,6 +163,30 @@ end
 
 function collectleaves(rope::RichRope{S,Nothing}, leaves::Vector{RichRope{S,Nothing}}=RichRope{S,Nothing}[]) where S<:AbstractString
     push!(leaves,rope)
+end
+
+function compactleaves!(leaves::Vector{RichRope{S,Nothing}}, ls::Integer=leaf_size[]) where {S<:AbstractString}
+    maxleaf = ls + (ls ÷ 4)
+    minleaf = ls - (ls ÷ 4)
+    io = IOBuffer()
+    deadidx = Int[]
+    bytes = 0
+    for i in firstindex(leaves):lastindex(leaves)
+        leaf = leaves[i]
+        if sizeof(leaf) ≤ minleaf || bytes > 0
+            bytes += write(io, leaf.leaf)
+            if bytes ≥ maxleaf || i == lastindex(leaves)
+                leaves[i] = stringtoleaf(S(String(take!(io))))
+                bytes = 0
+            else
+                push!(deadidx, i)
+            end
+        end
+    end
+    if !isempty(deadidx)
+        deleteat!(leaves, deadidx)
+    end
+    return leaves
 end
 
 # Interface

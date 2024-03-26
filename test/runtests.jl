@@ -1,6 +1,6 @@
 import AbstractTrees: NodeType, HasNodeType, children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: graphemes
-import RichRopes: collectleaves, mergeleaves, nthgrapheme, nthgraphemeindex, stringtoleaf
+import RichRopes: collectleaves, compactleaves!, mergeleaves, nthgrapheme, nthgraphemeindex, stringtoleaf
 
 using Aqua
 using RichRopes
@@ -222,6 +222,14 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test nthgraphemeindex(ref, 5) ==  61
         @test_throws "Can't return grapheme" nthgrapheme(ref, 45)
         @test_throws "No index for grapheme" nthgraphemeindex(ref, 40)
+    end
+
+    @testset "Compaction and Balancing" begin
+        shortleaf = stringtoleaf("abcd")
+        leafvec = fill(shortleaf, 41)
+        compacted = compactleaves!(leafvec, 9)
+        @test RichRopes.mergeleaves(compactleaves!(leafvec, 9)) == "abcd" ^ 41
+        @test compacted isa Vector{RichRope{String, Nothing}}
     end
 
     @testset "AbstractTrees" begin
