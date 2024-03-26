@@ -5,12 +5,13 @@ version = "1.0.0-DEV"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+StringViews = "354b36f9-a18e-4713-926e-db85100087ba"
 
 [compat]
+AbstractTrees = "0.4"
 Aqua = "0.8"
 Test = "1"
 julia = "1"
-AbstractTrees = "0.4"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"

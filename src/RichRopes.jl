@@ -5,7 +5,7 @@ export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild
 import AbstractTrees:
     HasNodeType, NodeType, children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: graphemes, isgraphemebreak!
-
+using StringViews
 
 
 
@@ -84,12 +84,11 @@ function readinrope(io::IO, leafsize::Integer=leaf_size[])
     leaves = RichRope{String,Nothing}[]
     first = true
     while reading
-        v1 = read(io, leafsize)
-        if length(v1) < leafsize
+        v = append!(remain, read(io, leafsize))
+        if length(v) < leafsize
             reading = false
         end
-        v = append!(remain, v1)
-        s = String(copy(v))
+        s = StringView(v)
         len, g, nl, last, valid, bad_end = string_metrics(s)
         if first
             nl += 1
@@ -102,13 +101,13 @@ function readinrope(io::IO, leafsize::Integer=leaf_size[])
             len -= length(last)
             g -= bad_end ? 2 : 1
             nl -= count('\n', last)
-            resize!(v, length(v) - ncodeunits(last))
             remain = collect(codeunits(last))
+            resize!(v, length(v) - ncodeunits(last))
             s = String(v)
         end
         # This can leave an empty string (think Zalgotext), which we don't need
         if !isempty(s)
-            rope = RichRope(sizeof(s), 0, len, g, nl, s)
+            rope = RichRope(sizeof(s), 0, len, g, nl, String(s))
             push!(leaves, rope)
         end
     end
@@ -600,9 +599,14 @@ function nthgraphemeindex(s::S, i::Integer) where {S<:AbstractString}
     error(lazy"No index for grapheme $i in $(length(graphemes(s)))-grapheme string")
 end
 
+# awful shim
+
+emptystring(::Union{Type{SubString{S}},SubString{S}}) where {S} = one(SubString{S})
+emptystring(::Union{Type{S},S}) where {S<:AbstractString} = typemin(S)
+
 function string_metrics(s::S) where {S<:AbstractString}
-    if s == one(S)
-        return 0, 0, 0, one(SubString{S}), true, false
+    if s == emptystring(S)
+        return 0, 0, 0, emptystring(SubString{S}), true, false
     end
     nl, len = 0, 0
     malformed_end = false
