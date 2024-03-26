@@ -13,7 +13,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        # Aqua.test_all(RichRopes)
+        Aqua.test_all(RichRopes)
     end
 
     @testset "Reading" begin
@@ -158,7 +158,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError delete(rope, 1:31)
     end
 
-    @testset "delete tests GPT edition" begin
+    @testset "Delete Tests GPT Edition" begin
         # Test for correct deletion
         let original_rope = RichRope("Hello World"), range = 7:11
             expected_output = RichRope("Hello ")
@@ -214,6 +214,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
         rope = readinrope(ref)
         @test mergeleaves(collectleaves(rope)) == rope
+
     end
 
     @testset "Graphemes" begin

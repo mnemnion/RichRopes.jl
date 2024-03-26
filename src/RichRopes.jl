@@ -178,13 +178,14 @@ reduce the leaf size of a `RichRope`.  Presuming that the rope was created origi
 of `leaf_size[]` leaves, the leaves resulting from `compactleaves!` will never be
 larger than 1.75X `leaf_size[]`.
 
-This is called by [rebuild](@ref).
+This is called by [`rebuild`](@ref).
 """
 function compactleaves!(leaves::Vector{RichRope{S,Nothing}}, ls::Integer=leaf_size[]) where {S<:AbstractString}
     maxleaf = ls + (ls ÷ 4)
     minleaf = ls - (ls ÷ 4)
     io = IOBuffer()
-    deadidx = Int[]
+    deadidx = length(leaves) ≤ typemax(UInt8) ? UInt8[] :
+              length(leaves) ≤ typemax(UInt16) ? UInt16[] : Int[]  # above 64KiB we don't care lol
     bytes = 0
     for i in firstindex(leaves):lastindex(leaves)
         leaf = leaves[i]
@@ -210,7 +211,7 @@ end
 Rebuild a `RichRope`.  This will compact adjacent small leaves into correctly-sized
 ones, and balance the tree.  Note that a value of `leafsize` smaller than that used
 to create the rope will not result in any leaf nodes being split, but will affect the
-target length of leaves which are compacted (see [compact](@ref)).
+target length of leaves which are compacted (see [`compactleaves!`](@ref)).
 """
 function rebuild(rope::RichRope{S,RichRope{S}} where {S}, leafsize::Integer=leaf_size[])
     compactleaves!(collectleaves(rope), leafsize) |> mergeleaves
@@ -461,23 +462,33 @@ end
 
 Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
-# TODO make a struct to implement the iterator interface
-function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
-    stack = RichRope{S}[rope]
-    r = rope.left::RichRope{S}
-    while !isleaf(r)
-        push!(stack, r)
-        r = r.left::RichRope{S}
-    end
-    push!(stack, r)
-    return r.leaf[1], (stack, 1)
+# Iteration Interface
+
+mutable struct RichRopeCharIterator{S<:AbstractString}
+    stack::Vector{RichRope{S}}
+    count::Int
 end
 
-function Base.iterate(::RichRope{S}, state::Tuple) where {S<:AbstractString}
-    stack, i = state
+Base.IteratorSize(::Type{RichRope}) = Base.HasLength()
+Base.IteratorEltype(::Type{RichRope})  = Base.HasEltype()
+
+function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
+    iter = RichRopeCharIterator(RichRope{S}[rope], 1)
+    r = rope.left::RichRope{S}
+    while !isleaf(r)
+        push!(iter.stack, r)
+        r = r.left::RichRope{S}
+    end
+    push!(iter.stack, r)
+    return r.leaf[1], iter
+end
+
+function Base.iterate(::RichRope{S}, iter::RichRopeCharIterator) where {S<:AbstractString}
+    stack, i = iter.stack, iter.count
     ind = nextind(stack[end].leaf, i)
     if ind ≤ stack[end].sizeof
-        return stack[end].leaf[ind], (stack, ind)
+        iter.count = ind
+        return stack[end].leaf[ind], iter
     else
         pop!(stack) # drop the leaf
         if isempty(stack)
@@ -488,7 +499,8 @@ function Base.iterate(::RichRope{S}, state::Tuple) where {S<:AbstractString}
         while !isleaf(stack[end])
             push!(stack, stack[end].left::RichRope)
         end
-        return stack[end].leaf[1], (stack, 1)
+        iter.count = 1
+        return stack[end].leaf[1], iter
     end
 end
 
