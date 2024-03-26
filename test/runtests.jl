@@ -108,14 +108,20 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             ref = "aδ∇🍆h"^i
             rope = readinrope(ref)
            @test rope * rope == ref * ref
+           @test (rope * "a" * rope == ref * "b" * ref) == false
            @test rope * ref == ref * rope
         end
-        ss = stringtoleaf(@view "abcdef"[1:6])
-        st = stringtoleaf("abcdef")
+        ref = "abcdef"
+        ss = stringtoleaf(@view ref[1:6])
+        st = stringtoleaf(ref)
+        @test ss * 'a' isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test ss * 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test 'a' * ss * 'a' * "a" isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test (st * "!" == ss) == false
         @test (st == "abdcef") == false
         @test (st == stringtoleaf("abdcef")) == false
-        @test ss * st == "abcdefabcdef"
+        @test ss * st == ref^2
         @test ss * st isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
         @test st * ss == "abcdefabcdef"
         @test st * ss isa RichRope{String, RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}}
