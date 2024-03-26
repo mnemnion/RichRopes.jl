@@ -268,8 +268,7 @@ end
 # AbstractTrees interface
 
 children(rope::RichRope{S,RichRope{S}} where {S}) = rope.left, rope.right
-childtype(::Type{RichRope{S,RichRope{S}}}) where {S} = RichRope{S}
-childtype(::Type{RichRope{S,Nothing}}) where {S} = Nothing
+childtype(::Type{RichRope{S,C}}) where {S,C} = C
 ischild(r1::RichRope, r2::RichRope{S,RichRope{S}} where {S}) = r2.left ≡ r1 || r2.right ≡ r1
 ischild(r1::RichRope, r2::RichRope{S,Nothing} where {S}) = false
 NodeType(::Type{RichRope{S,RichRope{S}}}) where {S} = HasNodeType()
