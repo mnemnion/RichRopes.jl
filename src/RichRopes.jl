@@ -2,7 +2,7 @@ module RichRopes
 
 export RichRope, AbstractRope, readinrope, cleave, delete, splice
 
-import AbstractTrees: HasNodeType, NodeType, children, childrentype,
+import AbstractTrees: HasNodeType, NodeType, children, childtype,
                       nodevalue, print_tree, printnode, ischild
 import Base.Unicode: graphemes, isgraphemebreak!
 
@@ -268,10 +268,12 @@ end
 # AbstractTrees interface
 
 children(rope::RichRope{S,RichRope{S}} where {S}) = rope.left, rope.right
-childrentype(::Type{RichRope{S}}) where {S} = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
+childtype(::Type{RichRope{S,RichRope{S}}}) where {S} = RichRope{S}
+childtype(::Type{RichRope{S,Nothing}}) where {S} = Nothing
 ischild(r1::RichRope, r2::RichRope{S,RichRope{S}} where {S}) = r2.left ≡ r1 || r2.right ≡ r1
 ischild(r1::RichRope, r2::RichRope{S,Nothing} where {S}) = false
-NodeType(::Type{RichRope}) = HasNodeType()
+NodeType(::Type{RichRope{S,RichRope{S}}}) where {S} = HasNodeType()
+NodeType(::Type{RichRope{S,Nothing}}) where {S} = HasNodeType()
 print_tree(rope::RichRope) = print_tree(rope, maxdepth=rope.depth)
 
 function printnode(io::IO, rope::RichRope{S,RichRope{S}} where {S})

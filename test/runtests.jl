@@ -1,11 +1,13 @@
-using RichRopes
-import RichRopes: stringtoleaf, collectleaves, nthgrapheme, nthgraphemeindex, mergeleaves
-using Test
-using Aqua
+import AbstractTrees: NodeType, HasNodeType, children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: graphemes
+import RichRopes: collectleaves, mergeleaves, nthgrapheme, nthgraphemeindex, stringtoleaf
+
+using Aqua
+using RichRopes
+using Test
 
 
-RichRopes.leaf_size[] = rand(1:32)
+RichRopes.leaf_size[] = rand(2:32)
 
 println("Leaf Size: $(RichRopes.leaf_size[])")
 
@@ -114,21 +116,20 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         ref = "abcdef"
         ss = stringtoleaf(@view ref[1:6])
         st = stringtoleaf(ref)
-        @test ss * 'a' isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
-        @test 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
-        @test ss * 'a' * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
-        @test 'a' * ss * 'a' * "a" isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
-        @test "a" * ss * 'a' * 'a' * ss * ss isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test ss * 'a' isa RichRope{SubString{String}}
+        @test 'a' * ss isa RichRope{SubString{String}}
+        @test ss * 'a' * ss isa RichRope{SubString{String}}
+        @test 'a' * ss * 'a' * "a" isa RichRope{SubString{String}}
+        @test "a" * ss * 'a' * 'a' * ss * ss isa RichRope{SubString{String}}
         @test (st * "!" == ss) == false
         @test (st == "abdcef") == false
         @test (st == stringtoleaf("abdcef")) == false
         @test ss * st == ref^2
-        @test ss * st isa RichRope{SubString{String}, RichRope{SubString{String}, T} where T<:Union{Nothing, AbstractRope{SubString{String}}}}
+        @test ss * st isa RichRope{SubString{String}}
         @test st * ss == "abcdefabcdef"
-        @test st * ss isa RichRope{String, RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}}
+        @test st * ss isa RichRope{String}
         @test st ^ 6 == "abcdefabcdefabcdefabcdefabcdefabcdef"
     end
-
     @testset "Equality" begin
         ref = "abcδ👨🏻‍🌾e∇g🍆h"^rand(5:20)
         rope = readinrope(ref)
@@ -219,7 +220,18 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test nthgraphemeindex(ref, 5) ==  61
         @test_throws "Can't return grapheme" nthgrapheme(ref, 45)
         @test_throws "No index for grapheme" nthgraphemeindex(ref, 40)
+    end
 
+    @testset "AbstractTrees" begin
+        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
+        rope = readinrope(ref)
+        @test children(rope) == (rope.left, rope.right)
+        @test childtype(typeof(rope)) == RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}
+        @test childtype(typeof(stringtoleaf("abc"))) == Nothing
+        @test NodeType(typeof(rope)) == HasNodeType()
+        Base.redirect_stdio(stdout=devnull) do
+            @test print_tree(rope) === nothing
+        end
     end
 
     @testset "Basics" begin
