@@ -202,7 +202,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         rope = readinrope(ref, 9)
         @test repr("text/plain", rope) == "RichRope{String, RichRope{String}}\n   codeunits: 620\n   length: 280\n   graphemes: 220\n   lines: 21\n   max depth: 6\n"
         io = IOBuffer()
-        @test show(io, ref) === nothing
+        @test show(io, rope) === nothing
         @test String(take!(io)) == "\"abcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆h\""
         @test repr("text/plain", stringtoleaf("text/plain")) == "RichRope{String, Nothing} (leaf) \"text/plain\"\n"
     end
@@ -228,7 +228,13 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test children(rope) == (rope.left, rope.right)
         @test childtype(typeof(rope)) == RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}
         @test childtype(typeof(stringtoleaf("abc"))) == Nothing
+        @test ischild(rope.left, rope) == true
+        @test ischild(rope.right, rope) == true
+        @test ischild(rope, stringtoleaf("abc")) == false
+        @test ischild(rope, rope * "a") == true
+        @test ischild(rope * "a", rope) == false
         @test NodeType(typeof(rope)) == HasNodeType()
+        @test NodeType(typeof(stringtoleaf("abc"))) == HasNodeType()
         Base.redirect_stdio(stdout=devnull) do
             @test print_tree(rope) === nothing
         end
