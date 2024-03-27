@@ -10,6 +10,7 @@ StringViews = "354b36f9-a18e-4713-926e-db85100087ba"
 [compat]
 AbstractTrees = "0.4"
 Aqua = "0.8"
+StringViews = "1"
 Test = "1"
 julia = "1"
 
