@@ -214,6 +214,11 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
         rope = readinrope(ref)
         @test mergeleaves(collectleaves(rope)) == rope
+        @test mergeleaves(collect(leaves(rope))) == rope
+        iter = leaves(stringtoleaf("abc"))
+        @test isempty(iter) == false
+        @test iterate(iter) == ("abc", 1)
+        @test isempty(iter) == true
     end
 
     @testset "Graphemes" begin
