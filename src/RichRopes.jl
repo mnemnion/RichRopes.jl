@@ -2,9 +2,10 @@ module RichRopes
 
 export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild, leaves
 
-import AbstractTrees:
-    HasNodeType, NodeType, children, childtype, ischild, nodevalue, print_tree, printnode
-import Base.Unicode: graphemes, isgraphemebreak!
+import AbstractTrees: Leaves, LeavesState, children, childtype, ischild, nodevalue, print_tree, printnode
+import Base.Unicode: GraphemeIterator, isgraphemebreak!
+import Unicode: Unicode, graphemes
+
 using StringViews
 
 
@@ -317,50 +318,111 @@ function splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::Ab
     return left * str * right
 end
 
-mutable struct RichRopeLeafIterator{S}
-    stack::Vector{RichRope{S}}
-    giveleft::Bool
-end
-
-Base.IteratorSize(::Type{RichRopeLeafIterator{S}}) where {S} = Base.SizeUnknown()
-Base.eltype(::Type{RichRopeLeafIterator{S}}) where {S} = RichRope{S}
-Base.isdone(iter::RichRopeLeafIterator) = isempty(iter.stack)
-
 function leaves(rope::RichRope{S}) where {S}
-    iter = RichRopeLeafIterator{S}([rope], true)
-    while iter.stack[end].left !== nothing
-        push!(iter.stack, iter.stack[end].left)
-    end
-    return iter
+    Leaves(rope)
 end
 
-function Base.iterate(iter::RichRopeLeafIterator, i=0)
-    if isempty(iter.stack)
+mutable struct RichRopeGraphemeIterator{S}
+    leaves::Leaves
+    lstate::Union{LeavesState,Nothing}
+    graphemes::GraphemeIterator{S}
+    gstate::Tuple{Int,Int}
+    length::Int
+end
+
+Base.IteratorSize(::Type{RichRopeGraphemeIterator}) = Base.HasLength()
+Base.eltype(::Type{RichRopeGraphemeIterator{S}}) where {S} = SubString{S}
+Base.eltype(::Type{RichRopeGraphemeIterator{SubString{S}}}) where {S} = SubString{S}
+Base.length(giter::RichRopeGraphemeIterator) = giter.length
+
+function Unicode.graphemes(rope::RichRope)
+    leafiter = leaves(rope)
+    leaf, lstate = iterate(leafiter)
+    graphiter = graphemes(leaf.leaf)
+    RichRopeGraphemeIterator(leafiter, lstate, graphiter, (0,1), rope.grapheme)
+end
+
+Base.Unicode.graphemes(rope::RichRope) = Unicode.graphemes(rope)
+
+function Base.iterate(g::RichRopeGraphemeIterator, i=0)
+    next = iterate(g.graphemes, g.gstate)
+    if next !== nothing
+        g.gstate = next[2]
+        return next[1], i + 1
+    end
+    nextleaf = iterate(g.leaves, g.lstate)
+    if nextleaf === nothing
         return nothing
     end
-    if iter.giveleft
-        # switch leaves
-        this = pop!(iter.stack)
-        if isempty(iter.stack)
-            return this, i + 1
-        end
-        push!(iter.stack, iter.stack[end].right)
-        iter.giveleft = false
-        return this, i + 1
+    leaf, g.lstate = nextleaf[1], nextleaf[2]
+    g.graphemes = graphemes(leaf.leaf)
+    next = iterate(g.graphemes, (0,1))
+    if next !== nothing
+        g.gstate = next[2]
+        return next[1], i + 1
     else
-        ret = pop!(iter.stack)
-        pop!(iter.stack)  # both leaves exhausted
-        if isempty(iter.stack)
-            return ret, i + 1
-        end
-        this = pop!(iter.stack)
-        push!(iter.stack, this.right::RichRope)
-        while iter.stack[end].left !== nothing
-            push!(iter.stack, iter.stack[end].left::RichRope)
-        end
-        iter.giveleft = true
-        return ret, i + 1
+        error(repr(g.graphemes))
     end
+    return nothing
+end
+
+
+# Indexing
+#
+# Base-native index methods are in the Base methods section
+
+"""
+    grapheme(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+
+Return the `index`th grapheme of the rope.
+"""
+function grapheme(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+    if index <= rope.left.grapheme
+        grapheme(rope.left, index)
+    else
+        grapheme(rope.right, index - rope.left.grapheme)
+    end
+end
+
+function grapheme(rope::RichRope{S,Nothing}, index::Integer) where {S<:AbstractString}
+    nthgrapheme(rope.leaf, index)
+end
+
+"""
+    graphemeindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+
+Return the native (character) index of the `index`th grapheme.
+"""
+function graphemeindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+    if index <= rope.left.grapheme
+        graphemeindex(rope.left, index)
+    else
+        graphemeindex(rope.right, index - rope.left.grapheme)
+    end
+end
+
+function graphemeindex(rope::RichRope{S,Nothing}, index::Integer) where {S<:AbstractString}
+    # No need for bounds check, will throw clean if not found
+    nthgraphemeindex(rope.leaf, index)
+end
+
+"""
+    codeunitindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+
+Returns the character index (native index unit of `RichRopes`) for a given codeunit
+offset (usual native index for Strings).
+"""
+function codeunitindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
+    if index <= rope.left.sizeof
+        codeunitindex(rope.left, index)
+    else
+        rope.left.sizeof + codeunitindex(rope.right, index - rope.left.sizeof)
+    end
+end
+
+function codeunitindex(rope::RichRope{S,Nothing}, index::Integer) where {S<:AbstractString}
+    @boundscheck index ≤ rope.length && throw(BoundsError(rope.leaf, index))
+    @inbounds nthpoint(rope.leaf, index)
 end
 
 # AbstractTrees interface
@@ -369,8 +431,6 @@ children(rope::RichRope{S,RichRope{S}} where {S}) = rope.left, rope.right
 childtype(::Type{RichRope{S,C}}) where {S,C} = C
 ischild(r1::RichRope, r2::RichRope{S,RichRope{S}} where {S}) = r2.left ≡ r1 || r2.right ≡ r1
 ischild(r1::RichRope, r2::RichRope{S,Nothing} where {S}) = false
-NodeType(::Type{RichRope{S,RichRope{S}}}) where {S} = HasNodeType()
-NodeType(::Type{RichRope{S,Nothing}}) where {S} = HasNodeType()
 print_tree(rope::RichRope) = print_tree(rope, maxdepth=rope.depth)
 
 function printnode(io::IO, rope::RichRope{S,RichRope{S}} where {S})

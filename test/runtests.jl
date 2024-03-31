@@ -1,4 +1,4 @@
-import AbstractTrees: NodeType, HasNodeType, children, childtype, ischild, nodevalue, print_tree, printnode
+import AbstractTrees: NodeType, NodeTypeUnknown, children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: graphemes
 import RichRopes: collectleaves, compactleaves!, mergeleaves, nthgrapheme, nthgraphemeindex, stringtoleaf
 
@@ -217,8 +217,11 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test mergeleaves(collect(leaves(rope))) == rope
         iter = leaves(stringtoleaf("abc"))
         @test isempty(iter) == false
-        @test iterate(iter) == ("abc", 1)
-        @test isempty(iter) == true
+        @test iterate(iter) == ("abc", nothing)
+        @test iterate(iter, nothing) === nothing
+        for (left, right) in zip(graphemes(ref), graphemes(rope))
+            @test left == right
+        end
     end
 
     @testset "Graphemes" begin
@@ -252,8 +255,8 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test ischild(rope, stringtoleaf("abc")) == false
         @test ischild(rope, rope * "a") == true
         @test ischild(rope * "a", rope) == false
-        @test NodeType(typeof(rope)) == HasNodeType()
-        @test NodeType(typeof(stringtoleaf("abc"))) == HasNodeType()
+        @test NodeType(typeof(rope)) == NodeTypeUnknown()
+        @test NodeType(typeof(stringtoleaf("abc"))) == NodeTypeUnknown()
         Base.redirect_stdio(stdout=devnull) do
             @test print_tree(rope) === nothing
         end
