@@ -222,6 +222,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         for (left, right) in zip(graphemes(ref), graphemes(rope))
             @test left == right
         end
+        @test join(collect(graphemes(rope))) == rope
     end
 
     @testset "Graphemes" begin

@@ -360,10 +360,7 @@ function Base.iterate(g::RichRopeGraphemeIterator, i=0)
     if next !== nothing
         g.gstate = next[2]
         return next[1], i + 1
-    else
-        error(repr(g.graphemes))
     end
-    return nothing
 end
 
 
