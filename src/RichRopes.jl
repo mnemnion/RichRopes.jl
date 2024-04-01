@@ -394,7 +394,7 @@ function graphemeindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:
     if index <= rope.left.grapheme
         graphemeindex(rope.left, index)
     else
-        graphemeindex(rope.right, index - rope.left.grapheme)
+        rope.left.length + graphemeindex(rope.right, index - rope.left.grapheme)
     end
 end
 
@@ -402,6 +402,15 @@ function graphemeindex(rope::RichRope{S,Nothing}, index::Integer) where {S<:Abst
     # No need for bounds check, will throw clean if not found
     nthgraphemeindex(rope.leaf, index)
 end
+
+#=  "codeunitindex
+
+I'm going to wait until I implement the integration with StringUnits before returning to
+this.
+
+It's trickier than it looks, because everything else expects a character index, so it
+has to handle "sub-unit" values.  By throwing an error, yes, but the circumstances of
+this are easier to test with the StringUnits added.
 
 """
     codeunitindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:AbstractString}
@@ -413,14 +422,21 @@ function codeunitindex(rope::RichRope{S,RichRope{S}}, index::Integer) where {S<:
     if index <= rope.left.sizeof
         codeunitindex(rope.left, index)
     else
-        rope.left.sizeof + codeunitindex(rope.right, index - rope.left.sizeof)
+        rope.left.length + codeunitindex(rope.right, index - rope.left.sizeof)
     end
 end
 
 function codeunitindex(rope::RichRope{S,Nothing}, index::Integer) where {S<:AbstractString}
-    @boundscheck index ≤ rope.length && throw(BoundsError(rope.leaf, index))
-    @inbounds nthpoint(rope.leaf, index)
+    point = 0
+    for idx in eachindex(rope.leaf)
+        point += 1
+        if idx ≥ index
+            return point
+        end
+    end
 end
+
+=#
 
 # AbstractTrees interface
 
@@ -684,18 +700,28 @@ function nthgrapheme(s::S, i::Integer) where {S<:AbstractString}
         end
         c0 = c
     end
+    if i0 > 0
+        return @view s[i0:lastindex(s)]
+    end
     error(lazy"Can't return grapheme $i of $(length(graphemes(s)))-grapheme string")
 end
 
 
+"""
+    nthgraphemeindex(s::S, i::Integer) where {S<:AbstractString}
+
+Return the (character) index of the `i`th grapheme
+"""
 function nthgraphemeindex(s::S, i::Integer) where {S<:AbstractString}
     c0 = eltype(S)(0x00000000)
     state = Ref{Int32}(0)
     n = 0
-    for (idx, c) in pairs(s)
+    point = 0
+    for c in s
+        point += 1
         if isgraphemebreak!(state, c0, c)
             n += 1
-            n == i && return idx
+            n == i && return point
         end
         c0 = c
     end

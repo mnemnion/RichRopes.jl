@@ -1,6 +1,8 @@
-import AbstractTrees: NodeType, NodeTypeUnknown, children, childtype, ischild, nodevalue, print_tree, printnode
+import AbstractTrees: NodeType, NodeTypeUnknown, children, childtype, ischild, nodevalue,
+    print_tree, printnode
 import Base.Unicode: graphemes
-import RichRopes: collectleaves, compactleaves!, mergeleaves, nthgrapheme, nthgraphemeindex, stringtoleaf
+import RichRopes: collectleaves, compactleaves!, grapheme, graphemeindex, mergeleaves,
+    nthgrapheme, nthgraphemeindex, stringtoleaf
 
 using Aqua
 using RichRopes
@@ -223,12 +225,16 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test left == right
         end
         @test join(collect(graphemes(rope))) == rope
+        for (count, g) in enumerate(graphemes(rope))
+            @test grapheme(rope, count) == g
+            @test rope[graphemeindex(rope, count)] == g[1]
+        end
     end
 
     @testset "Graphemes" begin
         ref = "👨🏻‍🌾"^30
         @test nthgrapheme(ref, 5) == "👨🏻‍🌾"
-        @test nthgraphemeindex(ref, 5) ==  61
+        @test nthgraphemeindex(ref, 5) ==  17
         @test_throws "Can't return grapheme" nthgrapheme(ref, 45)
         @test_throws "No index for grapheme" nthgraphemeindex(ref, 40)
     end
