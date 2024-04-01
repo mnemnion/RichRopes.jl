@@ -221,10 +221,12 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test isempty(iter) == false
         @test iterate(iter) == ("abc", nothing)
         @test iterate(iter, nothing) === nothing
+        @test Base.IteratorSize(graphemes(rope)) == Base.HasLength()
         for (left, right) in zip(graphemes(ref), graphemes(rope))
             @test left == right
         end
         @test join(collect(graphemes(rope))) == rope
+        @test join(collect(graphemes(one(RichRope{SubString{String}}) * rope))) == rope
         for (count, g) in enumerate(graphemes(rope))
             @test grapheme(rope, count) == g
             @test rope[graphemeindex(rope, count)] == g[1]
