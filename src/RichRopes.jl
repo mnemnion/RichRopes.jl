@@ -2,7 +2,7 @@ module RichRopes
 
 export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild, leaves
 
-import AbstractTrees: Leaves, LeavesState, children, childtype, ischild, nodevalue, print_tree, printnode
+import AbstractTrees:  children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: GraphemeIterator, isgraphemebreak!
 import Unicode: Unicode, graphemes
 
@@ -318,13 +318,51 @@ function splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::Ab
     return left * str * right
 end
 
-function leaves(rope::RichRope{S}) where {S}
-    Leaves(rope)
+mutable struct LeafIterator{S}
+    s::Vector{RichRope{S}}
+    left::Bool
 end
 
+Base.eltype(::LeafIterator{S}) where {S} = RichRope{S,Nothing}
+Base.IteratorSize(::LeafIterator) = Base.SizeUnknown()
+Base.isdone(iter::LeafIterator) = isempty(iter.s)
+
+function leaves(rope::RichRope{S}) where {S}
+    iter = LeafIterator{S}([rope], true)
+    while !isleaf(iter.s[end])
+        push!(iter.s, iter.s[end].left)
+    end
+    return iter
+end
+
+function Base.iterate(iter::LeafIterator{S}, i::Int=0) where {S}
+    if isempty(iter.s)
+        return nothing
+    end
+    thatleaf = thisleaf = pop!(iter.s)::RichRope{S,Nothing}
+    if isempty(iter.s)
+        return thisleaf, i + 1
+    end
+    if !iter.left
+        while thatleaf === iter.s[end].right
+            thatleaf = pop!(iter.s)
+            if isempty(iter.s)
+                return thisleaf, i + 1
+            end
+        end
+    end
+    push!(iter.s, iter.s[end].right)
+    iter.left = false
+    while !isleaf(iter.s[end])
+        iter.left = true
+        push!(iter.s, iter.s[end].left)
+    end
+    return thisleaf, i + 1
+end
+
+
 mutable struct RichRopeGraphemeIterator{S}
-    leaves::Leaves
-    lstate::Union{LeavesState,Nothing}
+    leaves::LeafIterator{S}
     graphemes::GraphemeIterator{S}
     gstate::Tuple{Int,Int}
     length::Int
@@ -337,9 +375,9 @@ Base.length(giter::RichRopeGraphemeIterator) = giter.length
 
 function Unicode.graphemes(rope::RichRope)
     leafiter = leaves(rope)
-    leaf, lstate = iterate(leafiter)
+    leaf, = iterate(leafiter)
     graphiter = graphemes(leaf.leaf)
-    RichRopeGraphemeIterator(leafiter, lstate, graphiter, (0,1), rope.grapheme)
+    RichRopeGraphemeIterator(leafiter, graphiter, (0,1), rope.grapheme)
 end
 
 Base.Unicode.graphemes(rope::RichRope) = Unicode.graphemes(rope)
@@ -350,11 +388,10 @@ function Base.iterate(g::RichRopeGraphemeIterator, i=0)
         g.gstate = next[2]
         return next[1], i + 1
     end
-    nextleaf = iterate(g.leaves, g.lstate)
-    if nextleaf === nothing
+    if isempty(g.leaves)
         return nothing
     end
-    leaf, g.lstate = nextleaf[1], nextleaf[2]
+    leaf, = iterate(g.leaves)
     g.graphemes = graphemes(leaf.leaf)
     next = iterate(g.graphemes, (0,1))
     if next !== nothing
@@ -561,6 +598,8 @@ function Base.codeunit(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, 
         codeunit(rope.right, index - rope.left.sizeof)::UInt8
     end
 end
+
+Base.codeunit(::RichRope{S}) where {S} = codeunit(one(S))
 
 Base.codeunit(rope::RichRope{S,Nothing} where {S<:AbstractString}, index::Integer) = codeunit(rope.leaf, index)
 

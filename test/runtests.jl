@@ -1,5 +1,5 @@
 import AbstractTrees: NodeType, NodeTypeUnknown, children, childtype, ischild, nodevalue,
-    print_tree, printnode
+    print_tree, printnode, Leaves
 import Base.Unicode: graphemes
 import RichRopes: collectleaves, compactleaves!, grapheme, graphemeindex, mergeleaves,
     nthgrapheme, nthgraphemeindex, stringtoleaf
@@ -213,16 +213,19 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 
     @testset "Iteration" begin
         @test collect("abcdefg") == collect(readinrope("abcdefg", 4))
-        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^100
+        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^56
         rope = readinrope(ref)
         @test mergeleaves(collectleaves(rope)) == rope
         @test mergeleaves(collect(leaves(rope))) == rope
         iter = leaves(stringtoleaf("abc"))
         @test isempty(iter) == false
-        @test iterate(iter) == ("abc", nothing)
-        @test iterate(iter, nothing) === nothing
+        @test iterate(iter) == ("abc", 1)
+        @test isempty(iter) == true
         @test Base.IteratorSize(graphemes(rope)) == Base.HasLength()
         for (left, right) in zip(graphemes(ref), graphemes(rope))
+            @test left == right
+        end
+        for (left, right) in zip(Leaves(rope), leaves(rope))
             @test left == right
         end
         @test join(collect(graphemes(rope))) == rope
@@ -230,6 +233,9 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         for (count, g) in enumerate(graphemes(rope))
             @test grapheme(rope, count) == g
             @test rope[graphemeindex(rope, count)] == g[1]
+        end
+        for (cu1, cu2) in zip(codeunits(ref), codeunits(rope))
+            @test cu1 == cu2
         end
     end
 
