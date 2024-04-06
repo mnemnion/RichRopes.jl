@@ -318,19 +318,20 @@ function splice(rope::RichRope, at::Union{Integer,UnitRange{<:Integer}}, str::Ab
     return left * str * right
 end
 
-mutable struct LeafIterator{S}
+struct LeafIterator{S}
     s::Vector{RichRope{S}}
-    left::Bool
+    left::Vector{Bool}
 end
 
-Base.eltype(::LeafIterator{S}) where {S} = RichRope{S,Nothing}
-Base.IteratorSize(::LeafIterator) = Base.SizeUnknown()
+Base.eltype(::Union{Type{LeafIterator{S}},LeafIterator{S}}) where {S} = RichRope{S,Nothing}
+Base.IteratorSize(::Union{Type{LeafIterator},LeafIterator}) = Base.SizeUnknown()
 Base.isdone(iter::LeafIterator) = isempty(iter.s)
 
 function leaves(rope::RichRope{S}) where {S}
-    iter = LeafIterator{S}([rope], true)
+    iter = LeafIterator{S}([rope], [false])
     while !isleaf(iter.s[end])
         push!(iter.s, iter.s[end].left)
+        push!(iter.left, true)
     end
     return iter
 end
@@ -339,23 +340,23 @@ function Base.iterate(iter::LeafIterator{S}, i::Int=0) where {S}
     if isempty(iter.s)
         return nothing
     end
-    thatleaf = thisleaf = pop!(iter.s)::RichRope{S,Nothing}
+    thisleaf = pop!(iter.s)::RichRope{S,Nothing}
+    left = pop!(iter.left)
     if isempty(iter.s)
         return thisleaf, i + 1
     end
-    if !iter.left
-        while thatleaf === iter.s[end].right
-            thatleaf = pop!(iter.s)
-            if isempty(iter.s)
-                return thisleaf, i + 1
-            end
+    while !left
+        pop!(iter.s)
+        left = pop!(iter.left)
+        if isempty(iter.s)
+            return thisleaf, i + 1
         end
     end
     push!(iter.s, iter.s[end].right)
-    iter.left = false
+    push!(iter.left, false)
     while !isleaf(iter.s[end])
-        iter.left = true
         push!(iter.s, iter.s[end].left)
+        push!(iter.left, true)
     end
     return thisleaf, i + 1
 end
