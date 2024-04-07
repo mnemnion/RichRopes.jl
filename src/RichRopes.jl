@@ -10,7 +10,7 @@ using StringViews
 
 # Compatibility shim
 
-if VERSION ≤ v"1.8"
+if VERSION ≤ v"1.9-"
     splat(f) = a -> f(a...)
 end
 
