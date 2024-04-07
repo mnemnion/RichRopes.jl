@@ -98,13 +98,22 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
     @testset "getindex" begin
         ref = "aδ∇🍆h"
         w = length(ref)
-        rope = readinrope(ref^23)
+        longref = ref^23
+        rope = readinrope(longref)
         for i in eachindex(rope)
             I = (i - 1) % w + 1
             @test rope[i] == ref[nextind(ref, 0, I)]
         end
         @test rope[1:w] == ref
         @test rope[1:5w] == ref^5
+        mid = length(rope) ÷ 2
+        for _ in 1:50
+            start = rand(1:mid)
+            stop = rand(mid+1:length(rope))
+            rstart = nextind(longref, 0, start)
+            rstop = nextind(longref, 0, stop)
+            @test rope[start:stop] == longref[rstart:rstop]
+        end
     end
 
     @testset "Concat / * / == / ^ " begin

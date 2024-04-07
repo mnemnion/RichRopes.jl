@@ -228,7 +228,9 @@ function cleave(rope::RichRope{S,Nothing}, index::Integer)  where {S<:AbstractSt
         return rope, one(RichRope{S})
     end
     if isascii(rope)
-        return stringtoleaf(rope.leaf[begin:index]), stringtoleaf(rope.leaf[index+1:end])
+        left = stringtoleaf(@inbounds rope.leaf[begin:index])
+        right = stringtoleaf(@inbounds rope.leaf[index+1:end])
+        return left, right
     end
     left, right = @inbounds _cutstring(rope.leaf, index)::Tuple{S,S}
     return stringtoleaf(left), stringtoleaf(right)
@@ -241,6 +243,7 @@ Return two ropes created by splitting `rope` at `index`, as indexed by
 codepoints.
 """
 function cleave(rope::RichRope{S,RichRope{S}}, index::Integer) where {S}
+    @boundscheck 0 ≤ index ≤ length(rope) || throw(BoundsError(rope, index))
     if index == 0
         return one(RichRope{S}), rope
     elseif index == rope.length
@@ -328,7 +331,10 @@ Base.IteratorSize(::Union{Type{LeafIterator},LeafIterator}) = Base.SizeUnknown()
 Base.isdone(iter::LeafIterator) = isempty(iter.s)
 
 function leaves(rope::RichRope{S}) where {S}
-    iter = LeafIterator{S}([rope], [false])
+    s, left = [rope], [false]
+    sizehint!(s, rope.depth)
+    sizehint!(left, rope.depth)
+    iter = LeafIterator{S}(s, left)
     while !isleaf(iter.s[end])
         push!(iter.s, iter.s[end].left)
         push!(iter.left, true)
@@ -564,11 +570,26 @@ function Base.collect(rope::RichRope)
     return chars
 end
 
+function Base.nextind(rope::RichRope, i::Int, n::Int=1)
+    n < 0 && throw(ArgumentError("n cannot be negative: $n"))
+    i + n > length(rope) + 1 && throw(BoundsError(rope, i+n))
+    return i + n
+end
+
+function Base.prevind(rope::RichRope, i::Int, n::Int=1)
+    n < 0 && throw(ArgumentError("n cannot be negative: $n"))
+    i - n < 0 && throw(BoundsError(rope, i-n))
+    return i - n
+end
+
+Base.thisind(rope::RichRope, i::Int) = 0 < i ≤ length(rope) ? i : throw(BoundsError(rope, i))
+
 function Base.getindex(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
-    if index <= rope.left.length
-        getindex(rope.left, index)::Char
+    @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, i))
+    if index ≤ rope.left.length
+        @inbounds getindex(rope.left, index)::Char
     else
-        getindex(rope.right, index - rope.left.length)::Char
+        @inbounds getindex(rope.right, index - rope.left.length)::Char
     end
 end
 
@@ -576,10 +597,23 @@ function Base.getindex(rope::RichRope{S,Nothing} where {S<:AbstractString}, inde
     rope.leaf[nthpoint(rope.leaf, index)]
 end
 
-function Base.getindex(rope::RichRope, range::UnitRange{<:Integer})
-    _, tail = cleave(rope, range.start - 1)
-    rest, _ = cleave(tail, 1 + range.stop - range.start)
+function Base.getindex(rope::RichRope{S,RichRope{S}} where {S}, range::UnitRange{<:Integer})
+    @boundscheck (0 < range.start && range.stop ≤ length(rope)) || throw(BoundsError(rope, range))
+    if range.stop ≤ rope.left.length
+        return @inbounds getindex(rope.left, range)
+    elseif range.start > rope.left.length
+        return @inbounds getindex(rope.right, (range) .- (rope.left.length -1))
+    end
+    _, tail = @inbounds cleave(rope, range.start - 1)
+    rest, _ = @inbounds cleave(tail, 1 + range.stop - range.start)
     return rest
+end
+
+function Base.getindex(rope::RichRope{S,Nothing} where {S}, range::UnitRange{<:Integer})
+    @boundscheck (0 < range.start && range.stop ≤ length(rope)) || throw(BoundsError(rope, range))
+    start = @inbounds nthpoint(rope.leaf,range.start)
+    stop = @inbounds nthpoint(rope.leaf,range.stop)
+    return stringtoleaf(rope.leaf[start:stop])
 end
 
 function Base.view(rope::RichRope{S,RichRope{S}}, range::UnitRange{<:Integer}) where {S}
@@ -659,6 +693,15 @@ function Base.iterate(::RichRope{S}, iter::RichRopeCharIterator) where {S<:Abstr
     end
 end
 
+function Base.iterate(rope::RichRope{S}, i::Integer) where {S}
+    until = i - 1
+    iter = iterate(rope)
+    for _ in 1:until
+        iter = iterate(rope, iter[2])
+    end
+    return iter[1], i
+end
+
 Base.iterate(rope::RichRope{S,Nothing} where {S}) = isempty(rope.leaf) ? nothing : rope.leaf[1], 1
 
 function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer)
@@ -720,7 +763,7 @@ isleaf(a::RichRope{S}) where {S} = a.left === nothing
 
 @inline
 function nthpoint(s::AbstractString, i::Integer)
-    @boundscheck i > length(s) && throw(BoundsError("index out of bounds"))
+    @boundscheck i > length(s) && throw(BoundsError(s, i))
     @inbounds nextind(s, 0, i)
 end
 
