@@ -582,7 +582,7 @@ function Base.prevind(rope::RichRope, i::Int, n::Int=1)
     return i - n
 end
 
-Base.thisind(rope::RichRope, i::Int) = 0 < i ≤ length(rope) ? i : throw(BoundsError(rope, i))
+Base.thisind(rope::RichRope, i::Int) = 0 ≤ i ≤ length(rope) + 1 ? i : throw(BoundsError(rope, i))
 
 function Base.getindex(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
     @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, i))
@@ -602,7 +602,7 @@ function Base.getindex(rope::RichRope{S,RichRope{S}} where {S}, range::UnitRange
     if range.stop ≤ rope.left.length
         return @inbounds getindex(rope.left, range)
     elseif range.start > rope.left.length
-        return @inbounds getindex(rope.right, (range) .- (rope.left.length -1))
+        return @inbounds getindex(rope.right, (range) .- (rope.left.length))
     end
     _, tail = @inbounds cleave(rope, range.start - 1)
     rest, _ = @inbounds cleave(tail, 1 + range.stop - range.start)
@@ -646,6 +646,81 @@ Base.lastindex(rope::RichRope) = rope.length
 Base.isvalid(::RichRope) = true
 Base.isvalid(rope::RichRope, i::Integer) = 0 < i ≤ rope.length
 Base.isascii(rope::RichRope) = rope.sizeof == rope.length
+
+function Base.findnext(testf::Function, s::RichRope, i::Integer)
+    i = Int(i)
+    z = length(s) + 1
+    1 ≤ i ≤ z || throw(BoundsError(s, i))
+    @inbounds i == z || isvalid(s, i) || string_index_err(s, i)
+    e = lastindex(s)
+    while i <= e
+        testf(@inbounds s[i]) && return i
+        i = @inbounds nextind(s, i)
+    end
+    return nothing
+end
+
+function Base.findprev(testf::Function, s::RichRope, i::Integer)
+    i = Int(i)
+    z = length(s) + 1
+    0 ≤ i ≤ z || throw(BoundsError(s, i))
+    i == z && return nothing
+    @inbounds i == 0 || isvalid(s, i) || string_index_err(s, i)
+    while i >= 1
+        testf(@inbounds s[i]) && return i
+        i = @inbounds prevind(s, i)
+    end
+    return nothing
+end
+
+function Base._rsearch(s::RichRope,
+    t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
+    i::Integer)
+    idx = Base._rsearchindex(s, t, i)
+    if isempty(t)
+        idx:idx-1
+    elseif idx > firstindex(s) - 1
+        idx:(idx+length(t)-1)
+    else
+        nothing
+    end
+end
+
+function Base._searchindex(s::RichRope,
+    t::Union{AbstractString,AbstractChar,Int8,UInt8},
+    i::Int)
+    x = Iterators.peel(t)
+    if isnothing(x)
+        return 1 <= i <= nextind(s, lastindex(s))::Int ? i :
+               throw(BoundsError(s, i))
+    end
+    t1, trest = x
+    while true
+        i = findnext(isequal(t1), s, i)
+        if i === nothing
+            return 0
+        end
+        ii = nextind(s, i)::Int
+        a = Iterators.Stateful(trest)
+        matched = all(splat(==), zip(SubString(s, ii), a))
+        # error("")
+        (isempty(a) && matched) && return i
+        i = ii
+    end
+end
+
+function Base._search(s::RichRope,
+    t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
+    i::Integer)
+    idx = Base._searchindex(s, t, i)
+    if isempty(t)
+        idx:idx-1
+    elseif idx >= firstindex(s)
+        idx:(idx+length(t)-1)
+    else
+        nothing
+    end
+end
 
 Base.write(io::IO, rope::RichRope{S,Nothing}) where {S} = write(io, rope.leaf)
 function Base.write(io::IO, rope::RichRope{S,RichRope{S}}) where {S}
@@ -694,12 +769,8 @@ function Base.iterate(::RichRope{S}, iter::RichRopeCharIterator) where {S<:Abstr
 end
 
 function Base.iterate(rope::RichRope{S}, i::Integer) where {S}
-    until = i - 1
-    iter = iterate(rope)
-    for _ in 1:until
-        iter = iterate(rope, iter[2])
-    end
-    return iter[1], i
+    @boundscheck 0 < i ≤ length(rope) || throw(BoundsError(rope, i))
+    return rope[i], i + 1
 end
 
 Base.iterate(rope::RichRope{S,Nothing} where {S}) = isempty(rope.leaf) ? nothing : rope.leaf[1], 1
@@ -730,6 +801,11 @@ end
 Base.isempty(rope::RichRope{S,Nothing}) where {S} = rope.leaf == one(S)
 # Note: this relies on proper construction, the interface will prevent empty branch
 Base.isempty(rope::RichRope{S,RichRope{S}}) where {S} = false
+
+function Base.summary(io::IO, rope::RichRope)
+    prefix = isempty(rope) ? "empty" : string(length(rope), "-character")
+    print(io, prefix, " ", typeof(rope))
+end
 
 function Base.show(io::IO, ::MIME"text/plain", r::RichRope{S}) where {S}
     childtype = r.left === nothing ? "Nothing" : "RichRope{$S}"
