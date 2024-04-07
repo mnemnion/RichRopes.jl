@@ -238,6 +238,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test rope[nextspan] == "abcδ"
         @test findfirst("sss", rope) === nothing
         @test findlast("xxx", rope) === nothing
+        @test findfirst("abb", stringtoleaf("ababcabba")) == 6:8
 
     end
     @testset "Reprs" begin

@@ -8,6 +8,11 @@ import Unicode: Unicode, graphemes
 
 using StringViews
 
+# Compatibility shim
+
+if VERSION ≤ v"1.8"
+    splat(f) = a -> f(a...)
+end
 
 
 """
@@ -541,7 +546,7 @@ function Base.:(==)(a::RichRope{S,RichRope{S}}, b::RichRope{S}) where {S}
 end
 
 function Base.:(==)(a::RichRope{S,RichRope{S}}, b::R) where {S,R<:AbstractString}
-    if sizeof(a) != sizeof(b) || length(a) != length(b)
+    if sizeof(a) != sizeof(b)
         return false
     end
 
@@ -667,7 +672,7 @@ function Base.findprev(testf::Function, s::RichRope, i::Integer)
     i == z && return nothing
     @inbounds i == 0 || isvalid(s, i) || string_index_err(s, i)
     while i >= 1
-        testf(@inbounds s[i]) && return i
+        testf(@inbounds s[i]) &&  return i
         i = @inbounds prevind(s, i)
     end
     return nothing
@@ -701,9 +706,9 @@ function Base._searchindex(s::RichRope,
             return 0
         end
         ii = nextind(s, i)::Int
-        a = Iterators.Stateful(trest)
-        matched = all(splat(==), zip(SubString(s, ii), a))
-        (isempty(a) && matched) && return i
+        itr = Iterators.Stateful(trest)
+        matched = all(splat(==), zip(SubString(s, ii), itr))
+        (isempty(itr) && matched) && return i
         i = ii
     end
 end
@@ -768,19 +773,14 @@ function Base.iterate(::RichRope{S}, iter::RichRopeCharIterator) where {S<:Abstr
 end
 
 function Base.iterate(rope::RichRope{S}, i::Integer) where {S}
-    @boundscheck 0 < i ≤ length(rope) || throw(BoundsError(rope, i))
+    i > length(rope) && return nothing
     return rope[i], i + 1
 end
 
-Base.iterate(rope::RichRope{S,Nothing} where {S}) = isempty(rope.leaf) ? nothing : rope.leaf[1], 1
-
-function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer)
+function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer=1)
+    i > length(rope) && return nothing
     idx = nextind(rope.leaf, i)
-    if idx > rope.sizeof
-        return nothing
-    else
-        return rope.leaf[idx], idx
-    end
+    return rope.leaf[i], idx
 end
 
 function Base.convert(::Type{String}, rope::RichRope)
