@@ -703,7 +703,6 @@ function Base._searchindex(s::RichRope,
         ii = nextind(s, i)::Int
         a = Iterators.Stateful(trest)
         matched = all(splat(==), zip(SubString(s, ii), a))
-        # error("")
         (isempty(a) && matched) && return i
         i = ii
     end

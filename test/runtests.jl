@@ -104,8 +104,15 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             I = (i - 1) % w + 1
             @test rope[i] == ref[nextind(ref, 0, I)]
         end
+        for i in 2:(lastindex(rope) - 1)
+            refidx = nextind(longref, 0, i)
+            @test thisind(rope, i) == i
+            @test rope[prevind(rope, i)] == longref[prevind(longref, refidx)]
+            @test rope[nextind(rope, i)] == longref[nextind(longref, refidx)]
+        end
         @test rope[1:w] == ref
         @test rope[1:5w] == ref^5
+        @test rope[12w+1:13w] == ref
         mid = length(rope) ÷ 2
         for _ in 1:50
             start = rand(1:mid)
@@ -209,6 +216,29 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             expected_output = RichRope("HelloWorld")
             @test delete(original_rope, range) == expected_output
         end
+    end
+
+    @testset "Find" begin
+        ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^12
+        rope = readinrope(ref, 5)
+        @test findfirst('e', rope) == 9
+        @test findfirst("", rope) == 1:0
+        @test findlast('h', rope) == 168
+        @test findnext('h', rope, 168) == 168
+        @test findnext('h', rope, 169) === nothing
+        @test_throws BoundsError findnext('h', rope, 170)
+        @test findlast("", rope) == 168:167
+        @test findprev("a", rope, 0) === nothing
+        @test_throws BoundsError findprev("a", rope, -1)
+        @test findprev("abcδ", rope, 100) == 85:88
+        @test findnext("abcδ", rope, 100) == 113:116
+        prevspan = findprev("abcδ", rope, 100)
+        @test rope[prevspan] == "abcδ"
+        nextspan = findnext("abcδ", rope, 100)
+        @test rope[nextspan] == "abcδ"
+        @test findfirst("sss", rope) === nothing
+        @test findlast("xxx", rope) === nothing
+
     end
     @testset "Reprs" begin
         ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^20
