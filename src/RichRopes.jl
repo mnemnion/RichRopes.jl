@@ -429,7 +429,7 @@ Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
 
 Return an iterator of `Pair{Int,Char}` starting from the `i`th character.
 """
-function cursor(rope::RichRope{S}, i::Integer=0) where {S}
+function cursor(rope::RichRope{S}, i::Integer=1) where {S}
     iter = RopeCharCursor(RichRope{S}[rope], [false], 1, i - 1)
     while !isleaf(iter.stack[end])
         r = iter.stack[end]
@@ -441,7 +441,7 @@ function cursor(rope::RichRope{S}, i::Integer=0) where {S}
             push!(iter.left, true)
             push!(iter.stack, r.left)
         end
-        iter.count = i
+        iter.count = i - 1
     end
     return iter
 end
@@ -449,30 +449,31 @@ end
 function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:AbstractString}
     isempty(iter.stack) && return nothing
     iter.cursor += 1
+    iter.cursor > length(iter.stack[1]) && return nothing
     idx += 1
     stack, i = iter.stack, iter.count
     T::Type = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
-    ind = nextind(stack[end]::RichRope{S,Nothing}.leaf, i)
+    ind = nextind((stack[end]::RichRope{S,Nothing}).leaf, i)
     if ind ≤ stack[end].sizeof
         iter.count = ind
-        return iter.cursor => stack[end]::RichRope{S,Nothing}.leaf[ind], idx
+        return iter.cursor => (stack[end]::RichRope{S,Nothing}).leaf[ind], idx
     else
-        this = pop!(iter.stack)::T
-        isempty(iter.stack) && return nothing
-        left = pop!(iter.left)::T
+        this = pop!(stack)::T
+        isempty(stack) && return nothing
+        left = pop!(iter.left)
         while !left
-            this = pop!(iter.stack)::T
+            this = pop!(stack)::T
             left = pop!(iter.left)
-            isempty(iter.stack) && return nothing
+            isempty(stack) && return nothing
         end
-        push!(iter.stack, iter.stack[end]::T.right)
+        push!(stack, (stack[end]::T).right)
         push!(iter.left, false)
-        while !isleaf(iter.stack[end])
-            push!(iter.stack, iter.stack[end].left)
+        while !isleaf(stack[end])
+            push!(stack, (stack[end]::T).left)
             push!(iter.left, true)
         end
         iter.count = 1
-        return iter.cursor => stack[end].leaf[1], idx
+        return iter.cursor => (stack[end]::RichRope{S,Nothing})[1], idx
     end
 end
 
@@ -653,7 +654,7 @@ end
 Base.thisind(rope::RichRope, i::Int) = 0 ≤ i ≤ length(rope) + 1 ? i : throw(BoundsError(rope, i))
 
 function Base.getindex(rope::RichRope{S,RichRope{S}} where {S<:AbstractString}, index::Integer)
-    @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, i))
+    @boundscheck 0 < index ≤ length(rope) || throw(BoundsError(rope, index))
     if index ≤ rope.left.length
         @inbounds getindex(rope.left, index)::Char
     else
@@ -719,11 +720,8 @@ function Base.findnext(testf::Function, s::RichRope, i::Integer)
     i = Int(i)
     z = length(s) + 1
     1 ≤ i ≤ z || throw(BoundsError(s, i))
-    @inbounds i == z || isvalid(s, i) || string_index_err(s, i)
-    e = lastindex(s)
-    while i <= e
-        testf(@inbounds s[i]) && return i
-        i = @inbounds nextind(s, i)
+    for (idx, char) in cursor(s, i)
+        testf(char) && return idx
     end
     return nothing
 end
