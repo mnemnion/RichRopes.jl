@@ -15,7 +15,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
 
 @testset "RichRopes.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        # Aqua.test_all(RichRopes)
+        Aqua.test_all(RichRopes)
     end
 
     @testset "Reading" begin

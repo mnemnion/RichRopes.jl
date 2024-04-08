@@ -1,6 +1,6 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild, leaves
+export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild, leaves, cursor
 
 import AbstractTrees:  children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: GraphemeIterator, isgraphemebreak!
@@ -412,6 +412,69 @@ function Base.iterate(g::RichRopeGraphemeIterator, i=0)
     end
 end
 
+mutable struct RopeCharCursor{S<:AbstractString}
+    stack::Vector{RichRope{S}}
+    left::Vector{Bool}
+    count::Int
+    cursor::Int
+end
+
+Base.eltype(::Union{Type{RopeCharCursor{S}},RopeCharCursor{S}}) where {S} = Pair{Int64,eltype(S)}
+Base.IteratorSize(::Union{Type{RopeCharCursor},RopeCharCursor}) = Base.HasLength()
+Base.length(iter::RopeCharCursor) = isempty(iter.stack) ? 0 : iter.stack[1].length - iter.cursor - 1
+Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
+
+"""
+    cursor(rope::RichRope, i::Integer=1)
+
+Return an iterator of `Pair{Int,Char}` starting from the `i`th character.
+"""
+function cursor(rope::RichRope{S}, i::Integer=0) where {S}
+    iter = RopeCharCursor(RichRope{S}[rope], [false], 1, i - 1)
+    while !isleaf(iter.stack[end])
+        r = iter.stack[end]
+        if i > r.left.length
+            push!(iter.left, false)
+            push!(iter.stack, r.right)
+            i -= r.left.length
+        else
+            push!(iter.left, true)
+            push!(iter.stack, r.left)
+        end
+        iter.count = i
+    end
+    return iter
+end
+
+function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:AbstractString}
+    isempty(iter.stack) && return nothing
+    iter.cursor += 1
+    idx += 1
+    stack, i = iter.stack, iter.count
+    T::Type = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
+    ind = nextind(stack[end]::RichRope{S,Nothing}.leaf, i)
+    if ind ≤ stack[end].sizeof
+        iter.count = ind
+        return iter.cursor => stack[end]::RichRope{S,Nothing}.leaf[ind], idx
+    else
+        this = pop!(iter.stack)::T
+        isempty(iter.stack) && return nothing
+        left = pop!(iter.left)::T
+        while !left
+            this = pop!(iter.stack)::T
+            left = pop!(iter.left)
+            isempty(iter.stack) && return nothing
+        end
+        push!(iter.stack, iter.stack[end]::T.right)
+        push!(iter.left, false)
+        while !isleaf(iter.stack[end])
+            push!(iter.stack, iter.stack[end].left)
+            push!(iter.left, true)
+        end
+        iter.count = 1
+        return iter.cursor => stack[end].leaf[1], idx
+    end
+end
 
 # Indexing
 #
@@ -692,7 +755,7 @@ function Base._rsearch(s::RichRope,
 end
 
 function Base._searchindex(s::RichRope,
-    t::Union{AbstractString,AbstractChar,Int8,UInt8},
+    t::Union{AbstractString,Int8,UInt8},
     i::Int)
     x = Iterators.peel(t)
     if isnothing(x)
@@ -712,6 +775,8 @@ function Base._searchindex(s::RichRope,
         i = ii
     end
 end
+
+Base._searchindex(s::RichRope, t::AbstractChar, i::Integer) = something(findnext(isequal(t), s, i), 0)
 
 function Base._search(s::RichRope,
     t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
@@ -779,8 +844,7 @@ end
 
 function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer=1)
     i > length(rope) && return nothing
-    idx = nextind(rope.leaf, i)
-    return rope.leaf[i], idx
+    return rope.leaf[i], nextind(rope.leaf, i)
 end
 
 function Base.convert(::Type{String}, rope::RichRope)
