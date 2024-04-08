@@ -687,7 +687,7 @@ function Base._rsearch(s::RichRope,
     elseif idx > firstindex(s) - 1
         idx:(idx+length(t)-1)
     else
-        nothing
+        return nothing
     end
 end
 
@@ -722,7 +722,7 @@ function Base._search(s::RichRope,
     elseif idx >= firstindex(s)
         idx:(idx+length(t)-1)
     else
-        nothing
+        return nothing
     end
 end
 

@@ -236,16 +236,18 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test rope[prevspan] == "abcδ"
         nextspan = findnext("abcδ", rope, 100)
         @test rope[nextspan] == "abcδ"
+        @test findfirst('!', rope) === nothing
+        @test findlast('!', rope) === nothing
         @test findfirst("sss", rope) === nothing
         @test findlast("xxx", rope) === nothing
         @test findfirst("abb", stringtoleaf("ababcabba")) == 6:8
-
     end
     @testset "Reprs" begin
         ref = "abcδ👨🏻‍🌾e\n∇g🍆h"^20
         rope = readinrope(ref, 9)
         @test repr("text/plain", rope) == "RichRope{String, RichRope{String}}\n   codeunits: 620\n   length: 280\n   graphemes: 220\n   lines: 21\n   max depth: 6\n"
         io = IOBuffer()
+        @test summary(rope) == "280-character RichRope{String, RichRope{String, T} where T<:Union{Nothing, AbstractRope{String}}}"
         @test show(io, rope) === nothing
         @test String(take!(io)) == "\"abcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆habcδ👨🏻\\u200d🌾e\\n∇g🍆h\""
         @test repr("text/plain", stringtoleaf("text/plain")) == "RichRope{String, Nothing} (leaf) \"text/plain\"\n"
