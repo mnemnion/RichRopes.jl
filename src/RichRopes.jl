@@ -421,7 +421,7 @@ end
 
 Base.eltype(::Union{Type{RopeCharCursor{S}},RopeCharCursor{S}}) where {S} = Pair{Int64,eltype(S)}
 Base.IteratorSize(::Union{Type{RopeCharCursor},RopeCharCursor}) = Base.HasLength()
-Base.length(iter::RopeCharCursor) = isempty(iter.stack) ? 0 : iter.stack[1].length - iter.cursor - 1
+Base.length(iter::RopeCharCursor) = isempty(iter.stack) ? 0 : iter.stack[1].length - iter.cursor
 Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
 
 """
@@ -812,41 +812,16 @@ Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 # Iteration Interface
 
-mutable struct RichRopeCharIterator{S<:AbstractString}
-    stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}
-    count::Int
-end
-
 function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
-    iter = RichRopeCharIterator(Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}[rope], 1)
-    r = rope.left::RichRope{S}
-    while !isleaf(r)
-        push!(iter.stack, r)
-        r = r.left::RichRope{S}
-    end
-    push!(iter.stack, r)
-    return r.leaf[1], iter
+    isempty(rope) && return nothing
+    iter = cursor(rope)
+    return iterate(iter)[1].second, iter
 end
 
-function Base.iterate(::RichRope{S}, iter::RichRopeCharIterator) where {S<:AbstractString}
-    stack, i = iter.stack, iter.count
-    ind = nextind(stack[end].leaf, i)
-    if ind ≤ stack[end].sizeof
-        iter.count = ind
-        return stack[end].leaf[ind], iter
-    else
-        pop!(stack) # drop the leaf
-        if isempty(stack)
-            return nothing
-        end
-        this = pop!(stack)
-        push!(stack, this.right::RichRope)
-        while !isleaf(stack[end])
-            push!(stack, stack[end].left::RichRope)
-        end
-        iter.count = 1
-        return stack[end].leaf[1], iter
-    end
+function Base.iterate(::RichRope{S}, iter::RopeCharCursor) where {S<:AbstractString}
+    this = iterate(iter)
+    this === nothing && return nothing
+    return this[1].second, iter
 end
 
 function Base.iterate(rope::RichRope{S}, i::Integer) where {S}
