@@ -477,6 +477,27 @@ function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:Abstrac
     end
 end
 
+function _nextleaf(stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}, left::Vector{Bool}) where {S}
+    length(stack) == 1 && return nothing
+    idx = length(stack)
+    if left[idx]
+        this = stack[idx-1].right
+        while !isleaf(this)
+            this = this.left
+        end
+        return this
+    end
+    while !left[idx]
+        idx -= 1
+    end
+    idx -= 1
+    this = stack[idx].right
+    while !isleaf(this)
+        this = this.left
+    end
+    return this
+end
+
 # Indexing
 #
 # Base-native index methods are in the Base methods section
