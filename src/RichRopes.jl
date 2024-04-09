@@ -413,7 +413,7 @@ function Base.iterate(g::RichRopeGraphemeIterator, i=0)
 end
 
 mutable struct RopeCharCursor{S<:AbstractString}
-    stack::Vector{RichRope{S}}
+    stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}
     left::Vector{Bool}
     count::Int
     cursor::Int
@@ -430,7 +430,7 @@ Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
 Return an iterator of `Pair{Int,Char}` starting from the `i`th character.
 """
 function cursor(rope::RichRope{S}, i::Integer=1) where {S}
-    iter = RopeCharCursor(RichRope{S}[rope], [false], 0, i - 1)
+    iter = RopeCharCursor(Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}[rope], [false], 0, i - 1)
     while !isleaf(iter.stack[end])
         r = iter.stack[end]
         if i > r.left.length
@@ -466,10 +466,10 @@ function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:Abstrac
             left = pop!(iter.left)
             isempty(stack) && return nothing
         end
-        push!(stack, (stack[end]::T).right)
+        push!(stack, (stack[end]::T).right::T)
         push!(iter.left, false)
-        while !isleaf(stack[end])
-            push!(stack, (stack[end]::T).left)
+        while !(stack[end] isa RichRope{S,Nothing})
+            push!(stack, (stack[end]::T).left::T)
             push!(iter.left, true)
         end
         iter.count = 1
@@ -813,12 +813,12 @@ Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 # Iteration Interface
 
 mutable struct RichRopeCharIterator{S<:AbstractString}
-    stack::Vector{RichRope{S}}
+    stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}
     count::Int
 end
 
 function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
-    iter = RichRopeCharIterator(RichRope{S}[rope], 1)
+    iter = RichRopeCharIterator(Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}[rope], 1)
     r = rope.left::RichRope{S}
     while !isleaf(r)
         push!(iter.stack, r)
