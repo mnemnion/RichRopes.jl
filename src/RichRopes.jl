@@ -430,7 +430,7 @@ Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
 Return an iterator of `Pair{Int,Char}` starting from the `i`th character.
 """
 function cursor(rope::RichRope{S}, i::Integer=1) where {S}
-    iter = RopeCharCursor(RichRope{S}[rope], [false], 1, i - 1)
+    iter = RopeCharCursor(RichRope{S}[rope], [false], 0, i - 1)
     while !isleaf(iter.stack[end])
         r = iter.stack[end]
         if i > r.left.length
@@ -441,7 +441,7 @@ function cursor(rope::RichRope{S}, i::Integer=1) where {S}
             push!(iter.left, true)
             push!(iter.stack, r.left)
         end
-        iter.count = i - 1
+        iter.count = nextind(iter.stack[end].leaf, 0, i-1)
     end
     return iter
 end
@@ -451,9 +451,9 @@ function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:Abstrac
     iter.cursor += 1
     iter.cursor > length(iter.stack[1]) && return nothing
     idx += 1
-    stack, i = iter.stack, iter.count
+    stack = iter.stack
     T::Type = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
-    ind = nextind((stack[end]::RichRope{S,Nothing}).leaf, i)
+    ind = nextind((stack[end]::RichRope{S,Nothing}).leaf, iter.count)
     if ind ≤ stack[end].sizeof
         iter.count = ind
         return iter.cursor => (stack[end]::RichRope{S,Nothing}).leaf[ind], idx
@@ -610,7 +610,7 @@ function Base.:(==)(a::RichRope{S,RichRope{S}}, b::RichRope{S}) where {S}
 end
 
 function Base.:(==)(a::RichRope{S,RichRope{S}}, b::R) where {S,R<:AbstractString}
-    if sizeof(a) != sizeof(b)
+    if ncodeunits(a) != ncodeunits(b)
         return false
     end
 
@@ -726,12 +726,19 @@ function Base.findnext(testf::Function, s::RichRope, i::Integer)
     return nothing
 end
 
+function _findincursor(λ::Function, cur::RopeCharCursor)
+    for (idx, char) in cur
+        # @assert cur.stack[1][idx] == char  "actual $(cur.stack[1][idx]), char $char"
+        λ(char) && return idx
+    end
+    return nothing
+end
+
 function Base.findprev(testf::Function, s::RichRope, i::Integer)
     i = Int(i)
     z = length(s) + 1
     0 ≤ i ≤ z || throw(BoundsError(s, i))
     i == z && return nothing
-    @inbounds i == 0 || isvalid(s, i) || string_index_err(s, i)
     while i >= 1
         testf(@inbounds s[i]) &&  return i
         i = @inbounds prevind(s, i)
@@ -752,27 +759,34 @@ function Base._rsearch(s::RichRope,
     end
 end
 
-function Base._searchindex(s::RichRope,
-    t::Union{AbstractString,Int8,UInt8},
-    i::Int)
-    x = Iterators.peel(t)
-    if isnothing(x)
+function Base._searchindex(s::RichRope, t::AbstractString, i::Int)
+    if isempty(t)
         return 1 <= i <= nextind(s, lastindex(s))::Int ? i :
                throw(BoundsError(s, i))
     end
-    t1, trest = x
+    t1 = t[begin]
+    trest = Iterators.drop(t,1)
+    cur = cursor(s, i)
+    eq = isequal(t1)
     while true
-        i = findnext(isequal(t1), s, i)
+        i = _findincursor(eq, cur)
         if i === nothing
             return 0
         end
         ii = nextind(s, i)::Int
-        itr = Iterators.Stateful(trest)
-        matched = all(splat(==), zip(SubString(s, ii), itr))
-        (isempty(itr) && matched) && return i
+        matched = true
+        count = 0
+        for (left, right) in zip(SubString(s, ii), trest)
+            count += 1
+            matched &= left == right
+            !matched && break
+        end
+        matched && count == length(trest) && return i
         i = ii
     end
 end
+
+
 
 Base._searchindex(s::RichRope, t::AbstractChar, i::Integer) = something(findnext(isequal(t), s, i), 0)
 
