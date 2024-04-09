@@ -1,6 +1,7 @@
 module RichRopes
 
-export RichRope, AbstractRope, readinrope, cleave, delete, splice, rebuild, leaves, cursor
+export RichRope, AbstractRope, readinrope, cleave, delete, splice,
+       rebuild, leaves, cursor, leftzip, rightzip, next, prev
 
 import AbstractTrees:  children, childtype, ischild, nodevalue, print_tree, printnode
 import Base.Unicode: GraphemeIterator, isgraphemebreak!
@@ -496,6 +497,58 @@ function _nextleaf(stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothin
         this = this.left
     end
     return this
+end
+
+# Zipper
+
+struct RopeZip{S}
+    parent::Union{RopeZip{S},Nothing}
+    this::Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
+    left::Bool
+end
+
+function leftzip(rope::RichRope{S}) where {S}
+    lz = RopeZip(nothing, rope, false)
+    while !isleaf(lz.this)
+        lz = RopeZip(lz, lz.this.left, true)
+    end
+    return lz
+end
+
+function rightzip(rope::RichRope{S}) where {S}
+    rz = RopeZip(nothing, rope, false)
+    while !isleaf(rz.this)
+        rz = RopeZip(rz, rz.this.right, false)
+    end
+    return rz
+end
+
+function next(zip::RopeZip)
+    zip.parent === nothing && return nothing
+    zip, left = zip.parent, zip.left
+    while !left
+        zip, left = zip.parent, zip.left
+        zip.parent === nothing && return nothing
+    end
+    zip = RopeZip(zip, zip.this.right, false)
+    while !isleaf(zip.this)
+        zip = RopeZip(zip, zip.this.left, true)
+    end
+    return zip
+end
+
+function prev(zip::RopeZip)
+    zip.parent === nothing && return nothing
+    zip, left = zip.parent, zip.left
+    while left
+        zip, left = zip.parent, zip.left
+        zip.parent === nothing && return nothing
+    end
+    zip = RopeZip(zip, zip.this.left, true)
+    while !isleaf(zip.this)
+        zip = RopeZip(zip, zip.this.right, false)
+    end
+    return zip
 end
 
 # Indexing
