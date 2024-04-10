@@ -373,7 +373,6 @@ function Base.iterate(iter::LeafIterator{S}, i::Int=0) where {S}
     return thisleaf, i + 1
 end
 
-
 mutable struct RichRopeGraphemeIterator{S}
     leaves::LeafIterator{S}
     graphemes::GraphemeIterator{S}
@@ -844,26 +843,18 @@ Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 # Iteration Interface
 
-function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
+_val(a) = a[2]
+
+function Base.iterate(rope::RichRope{S}) where {S<:AbstractString}
     isempty(rope) && return nothing
-    iter = cursor(rope)
-    return iterate(iter)[1].second, iter
+    iter = Iterators.map(_val, cursor(rope))
+    return iterate(iter)[1], iter
 end
 
-function Base.iterate(::RichRope{S}, iter::ZipCursor{S}) where {S<:AbstractString}
+function Base.iterate(::RichRope{S}, iter) where {S<:AbstractString}
     this = iterate(iter)
     this === nothing && return nothing
-    return this[1].second, iter
-end
-
-function Base.iterate(rope::RichRope{S}, i::Integer) where {S}
-    i > length(rope) && return nothing
-    return rope[i], i + 1
-end
-
-function Base.iterate(rope::RichRope{S,Nothing} where {S}, i::Integer=1)
-    i > length(rope) && return nothing
-    return rope.leaf[i], nextind(rope.leaf, i)
+    return this[1], iter
 end
 
 function Base.convert(::Type{String}, rope::RichRope)
