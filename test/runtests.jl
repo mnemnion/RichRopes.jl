@@ -312,6 +312,12 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
             @test cl == reverse!(cr)
         end
         zipboth(rope)
+        leaf = stringtoleaf("sphinx")
+        @test leftzip(leaf).this == rightzip(leaf).this
+        @test next(leftzip(leaf)) === nothing
+        @test prev(leftzip(leaf)) === nothing
+        @test next(rightzip(leaf)) === nothing
+        @test prev(rightzip(leaf)) === nothing
         @test join(collect(graphemes(rope))) == rope
         @test join(collect(graphemes(one(RichRope{SubString{String}}) * rope))) == rope
         for (count, g) in enumerate(graphemes(rope))
@@ -321,12 +327,12 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         for (cu1, cu2) in zip(codeunits(ref), codeunits(rope))
             @test cu1 == cu2
         end
+        for ((_, left), right) in zip(cursor(rope), rope)
+            @test left == right
+        end
+        @test eltype(cursor(rope)) == Pair{Int64, Char}
         @test collect(rope) == [c[2] for c in cursor(rope)]
         @test String([c[2] for c in cursor(rope, 70)]) == rope[70:end]
-        cleaf = leftzip(stringtoleaf("sphinx"))
-        @test prev(prev(cleaf)) === nothing
-        @test next(next(cleaf)) === nothing
-        @test prev(cleaf) == next(cleaf)
     end
 
     @testset "Graphemes" begin

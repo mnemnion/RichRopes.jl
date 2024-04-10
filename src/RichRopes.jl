@@ -381,7 +381,6 @@ mutable struct RichRopeGraphemeIterator{S}
     length::Int
 end
 
-Base.IteratorSize(::Type{RichRopeGraphemeIterator}) = Base.HasLength()
 Base.eltype(::Type{RichRopeGraphemeIterator{S}}) where {S} = SubString{S}
 Base.eltype(::Type{RichRopeGraphemeIterator{SubString{S}}}) where {S} = SubString{S}
 Base.length(giter::RichRopeGraphemeIterator) = giter.length
@@ -421,18 +420,12 @@ struct RopeZip{S}
     left::Bool
 end
 
-function leftzip(rope::RichRope{S,RichRope{S}}) where {S}
+function leftzip(rope::RichRope{S}) where {S}
     lz = RopeZip(nothing, rope, true)
     while !isleaf(lz.this)
         lz = RopeZip(lz, lz.this.left, true)
     end
     return lz
-end
-
-function leftzip(rope::RichRope{S,Nothing}) where {S}
-    # Bit of a hack, this:
-    lz = RopeZip(nothing, rope, true)
-    return RopeZip(lz, rope, false)
 end
 
 function rightzip(rope::RichRope{S}) where {S}
@@ -443,17 +436,9 @@ function rightzip(rope::RichRope{S}) where {S}
     return rz
 end
 
-function rightzip(rope::RichRope{S,Nothing}) where {S}
-    # Still a hack
-    rz = RopeZip(nothing, rope, false)
-    return RopeZip(rz, rope, false)
-end
 
 function next(zip::RopeZip{S}) where {S}
     zip.parent === nothing && return nothing
-    if zip.parent.this == zip.this && zip.parent.parent === nothing
-        return zip.parent
-    end
     zip, left = zip.parent, zip.left
     while !left
         zip, left = zip.parent, zip.left
@@ -468,9 +453,6 @@ end
 
 function prev(zip::RopeZip{S}) where {S}
     zip.parent === nothing && return nothing
-    if zip.parent.this == zip.this && zip.parent.parent === nothing
-        return zip.parent
-    end
     zip, left = zip.parent, zip.left
     while left
         zip, left = zip.parent, zip.left
