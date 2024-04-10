@@ -272,6 +272,46 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         for (left, right) in zip(Leaves(rope), leaves(rope))
             @test left == right
         end
+        function zipup(r)
+            zip = leftzip(r)
+            c = [zip.this]
+            while true
+                zip = next(zip)
+                zip === nothing && break
+                push!(c, zip.this)
+            end
+            return c
+        end
+        @test length(zipup(rope)) == length(collect(leaves(rope)))
+        function zipdown(r)
+            zip = rightzip(r)
+            c = [zip.this]
+            while true
+                zip = prev(zip)
+                zip === nothing && break
+                push!(c, zip.this)
+            end
+            return c
+        end
+        @test zipdown(rope) == reverse!(collect(leaves(rope)))
+        function zipboth(r)
+            lz = leftzip(r)
+            cl = [lz]
+            while true
+                lz = next(lz)
+                lz === nothing && break
+                push!(cl, lz)
+            end
+            rz = cl[end]
+            cr = [rz]
+            while true
+                rz = prev(rz)
+                rz === nothing && break
+                push!(cr, rz)
+            end
+            @test cl == reverse!(cr)
+        end
+        zipboth(rope)
         @test join(collect(graphemes(rope))) == rope
         @test join(collect(graphemes(one(RichRope{SubString{String}}) * rope))) == rope
         for (count, g) in enumerate(graphemes(rope))

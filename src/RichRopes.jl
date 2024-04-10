@@ -422,7 +422,7 @@ struct RopeZip{S}
 end
 
 function leftzip(rope::RichRope{S,RichRope{S}}) where {S}
-    lz = RopeZip(nothing, rope, false)
+    lz = RopeZip(nothing, rope, true)
     while !isleaf(lz.this)
         lz = RopeZip(lz, lz.this.left, true)
     end
@@ -431,12 +431,12 @@ end
 
 function leftzip(rope::RichRope{S,Nothing}) where {S}
     # Bit of a hack, this:
-    lz = RopeZip(nothing, rope, false)
+    lz = RopeZip(nothing, rope, true)
     return RopeZip(lz, rope, false)
 end
 
 function rightzip(rope::RichRope{S}) where {S}
-    rz = RopeZip(nothing, rope, false)
+    rz = RopeZip(nothing, rope, true)
     while !isleaf(rz.this)
         rz = RopeZip(rz, rz.this.right, false)
     end
@@ -457,7 +457,7 @@ function next(zip::RopeZip{S}) where {S}
     zip, left = zip.parent, zip.left
     while !left
         zip, left = zip.parent, zip.left
-        # zip.parent === nothing && return nothing
+        zip === nothing && return nothing
     end
     zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).right, false)
     while !isleaf(zip.this)
@@ -474,7 +474,7 @@ function prev(zip::RopeZip{S}) where {S}
     zip, left = zip.parent, zip.left
     while left
         zip, left = zip.parent, zip.left
-        zip.parent === nothing && return nothing
+        zip === nothing && return nothing
     end
     zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).left, true)
     while !isleaf(zip.this)
@@ -491,7 +491,7 @@ mutable struct ZipCursor{S}
 end
 
 Base.eltype(::Union{Type{ZipCursor{S}},ZipCursor{S}}) where {S} = Pair{Int64,eltype(S)}
-Base.IteratorSize(::Union{Type{ZipCursor},ZipCursor}) = Base.SizeUnknown() # Base.HasLength()
+Base.IteratorSize(::Union{Type{ZipCursor},ZipCursor}) = Base.HasLength()
 Base.length(iter::ZipCursor) = iter.length - iter.cursor
 Base.isdone(iter::ZipCursor) = iter.length - iter.cursor == 0
 Base.copy(z::ZipCursor) = ZipCursor(z.zip, z.cursor, z.index, z.length)
