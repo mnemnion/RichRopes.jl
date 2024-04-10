@@ -413,92 +413,6 @@ function Base.iterate(g::RichRopeGraphemeIterator, i=0)
     end
 end
 
-mutable struct RopeCharCursor{S<:AbstractString}
-    stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}
-    left::Vector{Bool}
-    count::Int
-    cursor::Int
-end
-
-Base.eltype(::Union{Type{RopeCharCursor{S}},RopeCharCursor{S}}) where {S} = Pair{Int64,eltype(S)}
-Base.IteratorSize(::Union{Type{RopeCharCursor},RopeCharCursor}) = Base.HasLength()
-Base.length(iter::RopeCharCursor) = isempty(iter.stack) ? 0 : iter.stack[1].length - iter.cursor
-Base.isdone(iter::RopeCharCursor) = isempty(iter.stack)
-
-"""
-    cursor(rope::RichRope, i::Integer=1)
-
-Return an iterator of `Pair{Int,Char}` starting from the `i`th character.
-"""
-function cursor(rope::RichRope{S}, i::Integer=1) where {S}
-    iter = RopeCharCursor(Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}[rope], [false], 0, i - 1)
-    while !isleaf(iter.stack[end])
-        r = iter.stack[end]
-        if i > r.left.length
-            push!(iter.left, false)
-            push!(iter.stack, r.right)
-            i -= r.left.length
-        else
-            push!(iter.left, true)
-            push!(iter.stack, r.left)
-        end
-        iter.count = nextind(iter.stack[end].leaf, 0, i-1)
-    end
-    return iter
-end
-
-function Base.iterate(iter::RopeCharCursor{S}, idx::Integer=1) where {S<:AbstractString}
-    isempty(iter.stack) && return nothing
-    iter.cursor += 1
-    iter.cursor > length(iter.stack[1]) && return nothing
-    idx += 1
-    stack = iter.stack
-    T::Type = Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}
-    ind = nextind((stack[end]::RichRope{S,Nothing}).leaf, iter.count)
-    if ind ≤ stack[end].sizeof
-        iter.count = ind
-        return iter.cursor => (stack[end]::RichRope{S,Nothing}).leaf[ind], idx
-    else
-        this = pop!(stack)::T
-        isempty(stack) && return nothing
-        left = pop!(iter.left)
-        while !left
-            this = pop!(stack)::T
-            left = pop!(iter.left)
-            isempty(stack) && return nothing
-        end
-        push!(stack, (stack[end]::T).right::T)
-        push!(iter.left, false)
-        while !(stack[end] isa RichRope{S,Nothing})
-            push!(stack, (stack[end]::T).left::T)
-            push!(iter.left, true)
-        end
-        iter.count = 1
-        return iter.cursor => (stack[end]::RichRope{S,Nothing})[1], idx
-    end
-end
-
-function _nextleaf(stack::Vector{Union{RichRope{S,RichRope{S}},RichRope{S,Nothing}}}, left::Vector{Bool}) where {S}
-    length(stack) == 1 && return nothing
-    idx = length(stack)
-    if left[idx]
-        this = stack[idx-1].right
-        while !isleaf(this)
-            this = this.left
-        end
-        return this
-    end
-    while !left[idx]
-        idx -= 1
-    end
-    idx -= 1
-    this = stack[idx].right
-    while !isleaf(this)
-        this = this.left
-    end
-    return this
-end
-
 # Zipper
 
 struct RopeZip{S}
@@ -507,12 +421,18 @@ struct RopeZip{S}
     left::Bool
 end
 
-function leftzip(rope::RichRope{S}) where {S}
+function leftzip(rope::RichRope{S,RichRope{S}}) where {S}
     lz = RopeZip(nothing, rope, false)
     while !isleaf(lz.this)
         lz = RopeZip(lz, lz.this.left, true)
     end
     return lz
+end
+
+function leftzip(rope::RichRope{S,Nothing}) where {S}
+    # Bit of a hack, this:
+    lz = RopeZip(nothing, rope, false)
+    return RopeZip(lz, rope, false)
 end
 
 function rightzip(rope::RichRope{S}) where {S}
@@ -523,32 +443,88 @@ function rightzip(rope::RichRope{S}) where {S}
     return rz
 end
 
-function next(zip::RopeZip)
+function rightzip(rope::RichRope{S,Nothing}) where {S}
+    # Still a hack
+    rz = RopeZip(nothing, rope, false)
+    return RopeZip(rz, rope, false)
+end
+
+function next(zip::RopeZip{S}) where {S}
     zip.parent === nothing && return nothing
+    if zip.parent.this == zip.this && zip.parent.parent === nothing
+        return zip.parent
+    end
     zip, left = zip.parent, zip.left
     while !left
         zip, left = zip.parent, zip.left
-        zip.parent === nothing && return nothing
+        # zip.parent === nothing && return nothing
     end
-    zip = RopeZip(zip, zip.this.right, false)
+    zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).right, false)
     while !isleaf(zip.this)
-        zip = RopeZip(zip, zip.this.left, true)
+        zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).left, true)
     end
     return zip
 end
 
-function prev(zip::RopeZip)
+function prev(zip::RopeZip{S}) where {S}
     zip.parent === nothing && return nothing
+    if zip.parent.this == zip.this && zip.parent.parent === nothing
+        return zip.parent
+    end
     zip, left = zip.parent, zip.left
     while left
         zip, left = zip.parent, zip.left
         zip.parent === nothing && return nothing
     end
-    zip = RopeZip(zip, zip.this.left, true)
+    zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).left, true)
     while !isleaf(zip.this)
-        zip = RopeZip(zip, zip.this.right, false)
+        zip = RopeZip(zip, (zip.this::RichRope{S,RichRope{S}}).right, false)
     end
     return zip
+end
+
+mutable struct ZipCursor{S}
+    zip::RopeZip{S}
+    cursor::Int
+    index::Int
+    length::Int
+end
+
+Base.eltype(::Union{Type{ZipCursor{S}},ZipCursor{S}}) where {S} = Pair{Int64,eltype(S)}
+Base.IteratorSize(::Union{Type{ZipCursor},ZipCursor}) = Base.SizeUnknown() # Base.HasLength()
+Base.length(iter::ZipCursor) = iter.length - iter.cursor
+Base.isdone(iter::ZipCursor) = iter.length - iter.cursor == 0
+Base.copy(z::ZipCursor) = ZipCursor(z.zip, z.cursor, z.index, z.length)
+
+function cursor(rope::RichRope, i::Integer=1)
+    cursor = i - 1
+    zip = RopeZip(nothing, rope, false)
+    while !isleaf(zip.this)
+        llen = zip.this.left.length
+        if i > llen
+            zip = RopeZip(zip, zip.this.right, false)
+            i -= llen
+        else
+            zip = RopeZip(zip, zip.this.left, true)
+        end
+    end
+    index = nextind(zip.this.leaf, 0, i-1)
+    return ZipCursor(zip, cursor, index, rope.length)
+end
+
+function Base.iterate(iter::ZipCursor{S}, i::Integer=1) where {S}
+    iter.cursor += 1
+    iter.cursor > iter.length && return nothing
+    idx = nextind(iter.zip.this.leaf, iter.index)
+    if idx ≤ ncodeunits(iter.zip.this)
+        iter.index = idx
+        return iter.cursor => iter.zip.this.leaf[idx], i + 1
+    end
+    newzip = next(iter.zip)
+    newzip === nothing && return nothing
+    iter.zip = newzip
+    iter.index = 1
+    return iter.cursor => iter.zip.this.leaf[1], i + 1
 end
 
 # Indexing
@@ -800,7 +776,7 @@ function Base.findnext(testf::Function, s::RichRope, i::Integer)
     return nothing
 end
 
-function _findincursor(λ::Function, cur::RopeCharCursor)
+function _findincursor(λ::Function, cur::ZipCursor)
     for (idx, char) in cur
         # @assert cur.stack[1][idx] == char  "actual $(cur.stack[1][idx]), char $char"
         λ(char) && return idx
@@ -850,7 +826,7 @@ function Base._searchindex(s::RichRope, t::AbstractString, i::Int)
         ii = nextind(s, i)::Int
         matched = true
         count = 0
-        for (left, right) in zip(SubString(s, ii), trest)
+        for ((_, left), right) in zip(copy(cur), trest)
             count += 1
             matched &= left == right
             !matched && break
@@ -892,7 +868,7 @@ function Base.iterate(rope::RichRope{S,RichRope{S}}) where {S<:AbstractString}
     return iterate(iter)[1].second, iter
 end
 
-function Base.iterate(::RichRope{S}, iter::RopeCharCursor) where {S<:AbstractString}
+function Base.iterate(::RichRope{S}, iter::ZipCursor{S}) where {S<:AbstractString}
     this = iterate(iter)
     this === nothing && return nothing
     return this[1].second, iter
