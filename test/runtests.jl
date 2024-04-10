@@ -232,6 +232,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError findprev("a", rope, -1)
         @test findprev("abcδ", rope, 100) == 85:88
         @test findnext("abcδ", rope, 100) == 113:116
+        @test findnext('δ', rope, 75) == 88
         prevspan = findprev("abcδ", rope, 100)
         @test rope[prevspan] == "abcδ"
         nextspan = findnext("abcδ", rope, 100)
@@ -280,6 +281,12 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         for (cu1, cu2) in zip(codeunits(ref), codeunits(rope))
             @test cu1 == cu2
         end
+        @test collect(rope) == [c[2] for c in cursor(rope)]
+        @test String([c[2] for c in cursor(rope, 70)]) == rope[70:end]
+        cleaf = leftzip(stringtoleaf("sphinx"))
+        @test prev(prev(cleaf)) === nothing
+        @test next(next(cleaf)) === nothing
+        @test prev(cleaf) == next(cleaf)
     end
 
     @testset "Graphemes" begin
