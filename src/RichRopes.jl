@@ -474,6 +474,7 @@ end
 Base.eltype(::Union{Type{ZipCursor{S}},ZipCursor{S}}) where {S} = Pair{Int64,eltype(S)}
 Base.IteratorSize(::Union{Type{ZipCursor},ZipCursor}) = Base.HasLength()
 Base.length(iter::ZipCursor) = iter.length - iter.cursor
+Base.length(rev::Iterators.Reverse{ZipCursor{S}} where {S}) = rev.itr.length - (rev.itr.length - rev.itr.cursor) + 1
 Base.isdone(iter::ZipCursor) = iter.length - iter.cursor == 0
 Base.copy(z::ZipCursor) = ZipCursor(z.zip, z.cursor, z.index, z.length)
 
@@ -506,6 +507,23 @@ function Base.iterate(iter::ZipCursor{S}, i::Integer=1) where {S}
     iter.zip = newzip
     iter.index = 1
     return iter.cursor => iter.zip.this.leaf[1], i + 1
+end
+
+function Base.iterate(rev::Iterators.Reverse{ZipCursor{S}}, i::Integer=1) where {S}
+    iter = rev.itr
+    iter.cursor == 0 && return nothing
+    cursor = iter.cursor
+    iter.cursor -= 1
+    idx = prevind(iter.zip.this.leaf, iter.index)
+    if idx > 0
+        iter.index = idx
+        return cursor => iter.zip.this.leaf[idx], i + 1
+    end
+    newzip = prev(iter.zip)
+    newzip === nothing && return nothing
+    iter.zip = newzip
+    iter.index = prevind(iter.zip.this.leaf, ncodeunits(iter.zip.this.leaf) + 1)
+    return iter.cursor => iter.zip.this.leaf[iter.index], i + 1
 end
 
 # Indexing
@@ -661,14 +679,6 @@ Base.ncodeunits(rope::RichRope) = rope.sizeof
 Base.sizeof(rope::RichRope) = rope.sizeof
 Base.length(rope::RichRope) = rope.length
 Base.eltype(::Type{RichRope{S}}) where {S<:AbstractString} = eltype(S)
-
-function Base.collect(rope::RichRope)
-    chars = Char[]
-    for c in rope
-        push!(chars, c)
-    end
-    return chars
-end
 
 function Base.nextind(rope::RichRope, i::Int, n::Int=1)
     n < 0 && throw(ArgumentError("n cannot be negative: $n"))
@@ -843,18 +853,33 @@ Base.print(io::IO, rope::RichRope) = (write(io, rope); return)
 
 # Iteration Interface
 
-_val(a) = a[2]
-
 function Base.iterate(rope::RichRope{S}) where {S<:AbstractString}
     isempty(rope) && return nothing
-    iter = Iterators.map(_val, cursor(rope))
-    return iterate(iter)[1], iter
+    iter = cursor(rope)
+    return iterate(iter)[1][2], iter
 end
 
 function Base.iterate(::RichRope{S}, iter) where {S<:AbstractString}
     this = iterate(iter)
     this === nothing && return nothing
-    return this[1], iter
+    return this[1][2], iter
+end
+
+struct ReversedRope{S}
+    iter::ZipCursor{S}
+end
+
+Base.length(rev::ReversedRope{S} where {S}) = rev.iter.length
+Base.eltype(::Union{Type{ReversedRope{S}},ReversedRope{S}}) where {S} = eltype(S)
+
+function Iterators.reverse(rope::RichRope{S}) where {S}
+    return Iterators.Reverse(ReversedRope(cursor(rope, length(rope))))
+end
+
+function Base.iterate(rev::Iterators.Reverse{ReversedRope{S}}, i=1) where {S}
+    this = iterate(rev.itr.iter, i)
+    this === nothing && return nothing
+    return this[1][2], i+1
 end
 
 function Base.convert(::Type{String}, rope::RichRope)
