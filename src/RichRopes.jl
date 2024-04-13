@@ -473,13 +473,15 @@ end
 
 Base.eltype(::Union{Type{ZipCursor{S}},ZipCursor{S}}) where {S} = Pair{Int64,eltype(S)}
 Base.IteratorSize(::Union{Type{ZipCursor},ZipCursor}) = Base.HasLength()
-Base.length(iter::ZipCursor) = iter.length - iter.cursor
-Base.length(rev::Iterators.Reverse{ZipCursor{S}} where {S}) = rev.itr.length - (rev.itr.length - rev.itr.cursor) + 1
-Base.isdone(iter::ZipCursor) = iter.length - iter.cursor == 0
+Base.length(iter::ZipCursor) = iter.length - iter.cursor + 1
+Base.length(rev::Iterators.Reverse{ZipCursor{S}} where {S}) = rev.itr.length - (rev.itr.length - rev.itr.cursor)
+Base.isdone(iter::ZipCursor) = iter.length - iter.cursor ≤ 0
+Base.isdone(rev::Iterators.Reverse{ZipCursor{S}} where {S}) = rev.itr.cursor == 0
 Base.copy(z::ZipCursor) = ZipCursor(z.zip, z.cursor, z.index, z.length)
+Base.copy(rz::Iterators.Reverse{ZipCursor{S}} where {S}) = Iterators.reverse(copy(rz.itr))
 
 function cursor(rope::RichRope, i::Integer=1)
-    cursor = i - 1
+    cursor = i
     zip = RopeZip(nothing, rope, false)
     while !isleaf(zip.this)
         llen = zip.this.left.length
@@ -490,40 +492,41 @@ function cursor(rope::RichRope, i::Integer=1)
             zip = RopeZip(zip, zip.this.left, true)
         end
     end
-    index = nextind(zip.this.leaf, 0, i-1)
+    index = nextind(zip.this.leaf, 0, i)
     return ZipCursor(zip, cursor, index, rope.length)
 end
 
 function Base.iterate(iter::ZipCursor{S}, i::Integer=1) where {S}
+    cursor = iter.cursor
+    cursor > iter.length && return nothing
     iter.cursor += 1
-    iter.cursor > iter.length && return nothing
-    idx = nextind(iter.zip.this.leaf, iter.index)
-    if idx ≤ ncodeunits(iter.zip.this)
-        iter.index = idx
-        return iter.cursor => iter.zip.this.leaf[idx], i + 1
+    if iter.index ≤ ncodeunits(iter.zip.this)
+        idx = iter.index
+        iter.index = nextind(iter.zip.this.leaf, iter.index)
+        return cursor => iter.zip.this.leaf[idx], i + 1
     end
     newzip = next(iter.zip)
     newzip === nothing && return nothing
     iter.zip = newzip
-    iter.index = 1
-    return iter.cursor => iter.zip.this.leaf[1], i + 1
+    iter.index = nextind(iter.zip.this.leaf, 1)
+    return cursor => iter.zip.this.leaf[1], i + 1
 end
 
 function Base.iterate(rev::Iterators.Reverse{ZipCursor{S}}, i::Integer=1) where {S}
     iter = rev.itr
-    iter.cursor == 0 && return nothing
     cursor = iter.cursor
+    cursor == 0 && return nothing
     iter.cursor -= 1
-    idx = prevind(iter.zip.this.leaf, iter.index)
-    if idx > 0
-        iter.index = idx
+    if iter.index > 0
+        idx = iter.index
+        iter.index = prevind(iter.zip.this.leaf, iter.index)
         return cursor => iter.zip.this.leaf[idx], i + 1
     end
     newzip = prev(iter.zip)
     newzip === nothing && return nothing
     iter.zip = newzip
-    iter.index = prevind(iter.zip.this.leaf, ncodeunits(iter.zip.this.leaf) + 1)
-    return iter.cursor => iter.zip.this.leaf[iter.index], i + 1
+    iter.index = prevind(iter.zip.this.leaf, lastindex(iter.zip.this.leaf))
+    return cursor => iter.zip.this.leaf[end], i + 1
 end
 
 # Indexing
@@ -760,44 +763,19 @@ Base.isascii(rope::RichRope) = rope.sizeof == rope.length
 function Base.findnext(testf::Function, s::RichRope, i::Integer)
     i = Int(i)
     z = length(s) + 1
-    1 ≤ i ≤ z || throw(BoundsError(s, i))
+    0 ≤ i ≤ z || throw(BoundsError(s, i))
+    i == 0 && throw(StringIndexError(s, i))
     for (idx, char) in cursor(s, i)
         testf(char) && return idx
     end
     return nothing
 end
 
-function _findincursor(λ::Function, cur::ZipCursor)
+function _findincursor(λ::Function, cur)
     for (idx, char) in cur
-        # @assert cur.stack[1][idx] == char  "actual $(cur.stack[1][idx]), char $char"
         λ(char) && return idx
     end
     return nothing
-end
-
-function Base.findprev(testf::Function, s::RichRope, i::Integer)
-    i = Int(i)
-    z = length(s) + 1
-    0 ≤ i ≤ z || throw(BoundsError(s, i))
-    i == z && return nothing
-    while i >= 1
-        testf(@inbounds s[i]) &&  return i
-        i = @inbounds prevind(s, i)
-    end
-    return nothing
-end
-
-function Base._rsearch(s::RichRope,
-    t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
-    i::Integer)
-    idx = Base._rsearchindex(s, t, i)
-    if isempty(t)
-        idx:idx-1
-    elseif idx > firstindex(s) - 1
-        idx:(idx+length(t)-1)
-    else
-        return nothing
-    end
 end
 
 function Base._searchindex(s::RichRope, t::AbstractString, i::Int)
@@ -839,6 +817,61 @@ function Base._search(s::RichRope,
         idx:(idx+length(t)-1)
     else
         return nothing
+    end
+end
+
+function Base.findprev(testf::Function, s::RichRope, i::Integer)
+    i = Int(i)
+    i == 0 && return nothing
+    z = length(s) + 1
+    0 ≤ i ≤ z || throw(BoundsError(s, i))
+    i == z && return nothing
+    for (i, c) in Iterators.reverse(cursor(s, i))
+        testf(c) && return i
+    end
+    return nothing
+end
+
+function Base._rsearch(s::RichRope,
+    t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
+    i::Integer)
+    idx = Base._rsearchindex(s, t, i)
+    if isempty(t)
+        idx:idx-1
+    elseif idx > firstindex(s) - 1
+        (idx-length(t)+1):idx
+    else
+        return nothing
+    end
+end
+
+function Base._rsearchindex(s::RichRope, t::AbstractString, i::Integer)
+    if isempty(t)
+        return 1 <= i <= nextind(s, lastindex(s))::Int ? i :
+               throw(BoundsError(s, i))
+    end
+    if lastindex(t) == 1
+        return something(findprev(isequal(t[1]), s, i), 0)
+    end
+    t1 = t[end]
+    trest = Iterators.drop(Iterators.reverse(t),1)
+    cur = Iterators.reverse(cursor(s, i))
+    eq = isequal(t1)
+    while true
+        i = _findincursor(eq, cur)
+        if i === nothing
+            return 0
+        end
+        ii = prevind(s, i)::Int
+        matched = true
+        count = 0
+        for ((_, left), right) in zip(copy(cur), trest)
+            count += 1
+            matched &= left == right
+            !matched && break
+        end
+        matched && count == length(trest) && return i
+        i = ii
     end
 end
 
