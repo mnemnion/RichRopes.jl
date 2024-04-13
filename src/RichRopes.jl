@@ -827,8 +827,6 @@ function Base._searchindex(s::RichRope, t::AbstractString, i::Int)
     end
 end
 
-
-
 Base._searchindex(s::RichRope, t::AbstractChar, i::Integer) = something(findnext(isequal(t), s, i), 0)
 
 function Base._search(s::RichRope,
@@ -866,18 +864,18 @@ function Base.iterate(::RichRope{S}, iter) where {S<:AbstractString}
 end
 
 struct ReversedRope{S}
-    iter::ZipCursor{S}
+    iter::Iterators.Reverse{ZipCursor{S}}
 end
 
-Base.length(rev::ReversedRope{S} where {S}) = rev.iter.length
+Base.length(rev::ReversedRope{S} where {S}) = rev.iter.itr.length
 Base.eltype(::Union{Type{ReversedRope{S}},ReversedRope{S}}) where {S} = eltype(S)
 
 function Iterators.reverse(rope::RichRope{S}) where {S}
-    return Iterators.Reverse(ReversedRope(cursor(rope, length(rope))))
+    return ReversedRope(Iterators.reverse(cursor(rope, length(rope))))
 end
 
-function Base.iterate(rev::Iterators.Reverse{ReversedRope{S}}, i=1) where {S}
-    this = iterate(rev.itr.iter, i)
+function Base.iterate(rev::ReversedRope{S}, i=1) where {S}
+    this = iterate(rev.iter, i)
     this === nothing && return nothing
     return this[1][2], i+1
 end
