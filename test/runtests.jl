@@ -229,6 +229,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test_throws BoundsError findnext('h', rope, 170)
         @test findlast("", rope) == 168:167
         @test findprev("a", rope, 0) === nothing
+        @test findlast("qbc", rope) === nothing
         @test_throws BoundsError findprev("a", rope, -1)
         @test findprev("abcδ", rope, 100) == 85:88
         @test findnext("abcδ", rope, 100) == 113:116
@@ -334,6 +335,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test collect(rope) == [c[2] for c in cursor(rope)]
         @test String([c[2] for c in cursor(rope, 70)]) == rope[70:end]
         @test reverse(rope) == String(collect(Iterators.reverse(rope)))
+        @test length(Iterators.reverse(cursor(rope, length(rope)))) == length(rope)
     end
 
     @testset "Graphemes" begin

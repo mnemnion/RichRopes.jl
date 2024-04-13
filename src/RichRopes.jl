@@ -9,12 +9,6 @@ import Unicode: Unicode, graphemes
 
 using StringViews
 
-# Compatibility shim
-
-if VERSION ≤ v"1.9-"
-    splat(f) = a -> f(a...)
-end
-
 
 """
     AbstractRope <: AbstractString
@@ -812,8 +806,6 @@ function Base._searchindex(s::RichRope, t::AbstractString, i::Int)
         i = ii
     end
 end
-
-Base._searchindex(s::RichRope, t::AbstractChar, i::Integer) = something(findnext(isequal(t), s, i), 0)
 
 function Base._search(s::RichRope,
     t::Union{AbstractString,AbstractChar,AbstractVector{<:Union{Int8,UInt8}}},
