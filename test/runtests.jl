@@ -333,6 +333,7 @@ println("Leaf Size: $(RichRopes.leaf_size[])")
         @test eltype(cursor(rope)) == Pair{Int64, Char}
         @test collect(rope) == [c[2] for c in cursor(rope)]
         @test String([c[2] for c in cursor(rope, 70)]) == rope[70:end]
+        @test reverse(rope) == String(collect(Iterators.reverse(rope)))
     end
 
     @testset "Graphemes" begin

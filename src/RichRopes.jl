@@ -760,6 +760,14 @@ Base.isvalid(::RichRope) = true
 Base.isvalid(rope::RichRope, i::Integer) = 0 < i ≤ rope.length
 Base.isascii(rope::RichRope) = rope.sizeof == rope.length
 
+function Base.reverse(r::RichRope)
+    io = IOBuffer(sizehint=sizeof(r))
+    for c in Iterators.reverse(r)
+        write(io, c)
+    end
+    return String(take!(io))
+end
+
 function Base.findnext(testf::Function, s::RichRope, i::Integer)
     i = Int(i)
     z = length(s) + 1
